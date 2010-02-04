@@ -21,6 +21,7 @@
 #   2. 39-312 (2009-11-09): perl support, doall-generated answers support
 #   3. 2009-11-17: seq -> printf
 #   4. 2009-11-20: -D__T_SH__
+#   5. 40-034 (20010-02-04): added compile skipping (like make)
 
 scriptName="$0"
 INCLUDE_PATH="`echo $0 | sed -e 's/\/.*$//'`/../../include"
@@ -283,6 +284,10 @@ function source_compile()
     targetFile="$3"
   fi
   result="$targetFile"
+  if [ ! "$sourceFile" -nt "$targetFile" ]; then
+    tsh_information "information" "compile($sourceFile) skipped"
+    return;
+  fi
   case "$language" in
     "c") compileCommand="gcc $CFLAGS -o $targetFile -x c $sourceFile" ;;
     "cpp") compileCommand="g++ $CXXFLAGS -o $targetFile -x c++ $sourceFile" ;;
