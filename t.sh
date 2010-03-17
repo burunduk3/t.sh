@@ -24,8 +24,8 @@
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
 
 scriptName="$0"
-INCLUDE_PATH="`echo $0 | sed -e 's/\/.*$//'`/../../include"
-#INCLUDE_PATH="../../include"
+#INCLUDE_PATH="`echo $0 | sed -e 's/\/.*$//'`/../../include"
+INCLUDE_PATH="../../../include"
 
 OPERATION_SYSTEM=`uname || echo 'system_error'` # Windows is system error ^_~
 
@@ -451,6 +451,7 @@ t_build()
     fi
     # clean:
     rm --force [0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
+    rm --force ../tests/[0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
     if [ -f "doall.sh" ]; then
       tsh_information "information" "run doall.sh"
       "./doall.sh" || tsh_information "error" "doall.sh failed"
