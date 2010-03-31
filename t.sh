@@ -188,6 +188,8 @@ function find_recursive()
 {
   if [ -d "$1/src" ]; then
     result[${#result[*]}]="$1"
+  elif [ -d "$1/source" ]; then
+    result[${#result[*]}]="$1"
   elif [ -d "$1/tests" ]; then
     result[${#result[*]}]="$1"
   fi
@@ -408,10 +410,10 @@ function do_check()
 
 function readProblemProperties()
 {
-  if [ -f 'problem.properties' ]; then
-    pSolution=`cat problem.properties | grep "solution" | sed -e 's/^solution *= *//'`
-    pInputFile=`cat problem.properties | grep "input-file" | sed -e 's/^input-file *= *//'`
-    pOutputFile=`cat problem.properties | grep "output-file" | sed -e 's/^output-file *= *//'`
+  if [ -f "$problemDirectory/problem.properties" ]; then
+    pSolution=`cat "$problemDirectory/problem.properties" | grep "solution" | sed -e 's/^solution *= *//'`
+    pInputFile=`cat "$problemDirectory/problem.properties" | grep "input-file" | sed -e 's/^input-file *= *//'`
+    pOutputFile=`cat "$problemDirectory/problem.properties" | grep "output-file" | sed -e 's/^output-file *= *//'`
   fi
   if [ "$pInputFile" == "" ] || [ "$pInputFile" == "<stdin>" ]; then
     pInputFileName="$problemName.in"
@@ -446,6 +448,8 @@ t_build()
 
     if [ -d "${problemDirectory}/src" ] ; then
       pushd "${problemDirectory}/src" > /dev/null
+    elif [ -d "${problemDirectory}/source" ] ; then
+      pushd "${problemDirectory}/source" > /dev/null
     else
       pushd "${problemDirectory}/tests" > /dev/null
     fi
@@ -499,7 +503,7 @@ t_build()
       fi
     fi
     popd > /dev/null
-    pushd "${problemDirectory}/tests" > /dev/null || tsh_information "error" "directory “tests” was not created by doall" "fatal"
+    pushd "${problemDirectory}/tests" > /dev/null 2> /dev/null || tsh_information "error" "directory “tests” was not created by doall" "fatal"
     find_tests
     tests=(${result[*]})
     if [ "${#tests[*]}" == "0" ]; then
