@@ -1,0 +1,51 @@
+OVERVIEW
+
+t.sh is a tool for making acm-style competitions.
+It works with problems: generates tests and make simple checking
+It is under development now, so use it on you own risk.
+
+DOWNLOAD
+
+Better way is to checkout subversion repository with t.sh, like this:
+$ svn checkout http://burunduk3.geins.ru/svn/public/t.sh t.sh-readonly
+
+In this case you will get anonymous read-only access to t.sh. About contributing
+and making changes in t.sh, see «IMPORTANT» section below.
+
+INSTALLATION
+
+In general, t.sh is jush a bash script, so it doesn't need to be installed anywhere.
+But it can be useful to allow you invoke t.sh from anywhere on your system.
+
+For Windows, enter «windows» subdirectory and run setup.sh from this directory. This
+will create t.sh.cmd file, it is wrapper to t.sh. Then add «windows» directory to your
+PATH enviropment variable. Easy?
+
+For Linux, just make a symlink to t.sh from any directory from $PATH. For example, I added
+directory «~/user/binary» to my $PATH, and made link from ~/user/binary/t.sh to t.sh from
+subversion repository.
+
+IMPORTANT
+
+t.sh is in development, it has frequent updates.
+
+*** Please don't make copies of t.sh! ***
+*** Commit all you changes of t.sh into svn! ***
+
+Exception is then you make some specific changes that can be useful only for you.
+
+There are two ways to make changes to t.sh:
+ — Write to burunduk3@gmail.com description of you changes and new t.sh. I will
+merge code and publish it to svn by myself.
+ — Commit changes into svn. For that you will need login and password. Write to
+burunduk3@gmail.com if you don't have any. And you will need write-access to svn.
+Just checkout you work copy with «https» instead of «http» in link above from
+section «DOWNLOAD»
+
+Thank you!
+
+BACKTRACES
+
+If you have any questions, comments or impovement ideas, write to
+ burunduk3@gmail.com (Oleg Davydov)
+

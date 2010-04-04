@@ -3,8 +3,9 @@
   2) t.sh under cygwin
   3) refactor
   4) rename function tsh_information into something more laconical
-  5) profit!
+  5) ???
+  6) profit!
 == critical features (implemented in some versions of t.sh, but not in general) ==
-  1) -D __T_SH__
-  2) .exe suffix
-  3) stack for windows in gcc
+  1) [done] -D __T_SH__
+  2) [done] .exe suffix
+  3) [done] stack for windows in gcc
