@@ -23,14 +23,14 @@
 #   4. 2009-11-20: -D__T_SH__
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
 
-scriptName="$0"
+scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
 #INCLUDE_PATH="`echo $0 | sed -e 's/\/.*$//'`/../../include"
 INCLUDE_PATH="../../../include"
 
 OPERATION_SYSTEM=`uname || echo 'system_error'` # Windows is system error ^_~
 
-CFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
-CXXFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
+CFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
+CXXFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
 FPCFLAGS="-O3 -FE. -v0ewn -Sd -Fu$INCLUDE_PATH -Fi$INCLUDE_PATH -d__T_SH__"
 JAVAFLAGS="-Xmx256M -Xss128M"
 BINARY_SUFFIX=""
@@ -48,30 +48,32 @@ function help_build()
   echo "build: create tests, validate, generate answers, check"
   echo "  First, t.sh recursively searches directory tree for the problems."
   echo "  A directory is considered to look like a problem iff it contains"
-  echo "  either “src” or “tests” subdirectory."
+  echo "  either “src”, “source” or “tests” subdirectory."
   echo "  For each problem directory found, the following procedure is executed:"
-  echo "  If the “src” directory exists, t.sh uses it as source for tests,"
-  echo "  otherwise it users the “tests” directory itself."
-  echo "  Note: <test> stands for any (or every) string of 2–3 digits."
-  echo "  Step 0: generate tests"
+  echo "  Step 0: First existing directory in order “source”, “src”, “tests”"
+  echo "    is the source directory."
+  echo "  *Note: <test> stands for any (or every) string of 2–3 digits."
+  echo "  Step 1: generate tests"
   echo "    t.sh searches the source directory for doall.sh, then for doall.cmd or doall.bat."
 
   echo "    If none of above has been found, t.sh tries to generate each test separately,"
   echo "    using “do<test>.*” files or just copying “<test>.hand” or “<test>.manual” files."
-  echo "  Step 1: validate tests"
+  echo "  Step 2: validate tests"
   echo "    TODO: validate process"
   echo "    If no validator was found, the step is skipped with a warning"
-  echo "  Step 2: generate answers"
+  echo "  Step 3: generate answers"
   echo "    If exact solution was specified, it is used. Otherwise, file t.sh greps the"
   echo "    “problem.properties” file for a string “solution” and tries to use it."
   echo "    Then t.sh runs the solution on every test and copies resulting files to “<test>.a”"
-  echo "  Step 3: check"
+  echo "  Step 4: check"
   echo "    If some checker is present (a program named “check”, “checker”, “check_<problem>”),"
   echo "    the model solution is run on every test and checked using that checker."
 }
 
 function help_common()
 {
+  # some useful info
+  #  — enviropment variable COLOR_DISABLE disables coloring output when set to “true”
   echo "TODO: help common"
 }
 
@@ -85,23 +87,22 @@ function help_usage()
 
 # echo_colored: outputs one-line colored message
 #   usage: echo_colored <color> <message>
-#   color should be in vt100 style (for example, “1;31” means red)
+#   color should be in vt100 style (for example, “1;31” means bold red)
 #   COLOR_* consants can be used
-#   variable COLOR_DISABLE disables coloring when equals to “1”
+#   variable COLOR_DISABLE disables coloring when equals to “true”
 #   variable lineBreak disables line break after output when equals to “false”
 function echo_colored()
 {
-  if [ "$COLOR_DISABLE" == "1" ]; then
+  if [ "$COLOR_DISABLE" == "true" ]; then
     if [ "$lineBreak" == "false" ]; then
       echo -n "$1"
     else
       echo "$1"
     fi
   else
-    if [ "$lineBreak" == "false" ]; then
-      printf "\e[%sm%s\e[0m" "$1" "${*:2}"
-    else
-      printf "\e[%sm%s\e[0m\n" "$1" "${*:2}"
+    echo -n $'\e['$1'm'"${*:2}"$'\e[0m'
+    if [ "$lineBreak" != "false" ]; then
+      echo ""
     fi
   fi
 }
@@ -136,34 +137,34 @@ function tsh_information()
   fi
   errorType="$1"
   case "$errorType" in
-    "fatal")
-      echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-      exitFlag="fatal"
+    ("fatal")
+        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
+        exitFlag="fatal"
     ;;
-    "error")
-      echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-      exitFlag="fatal"
+    ("error")
+        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
+        exitFlag="fatal"
     ;;
-    "warning")
-      echo_colored $COLOR_YELLOW "[$scriptName, $errorType]" "$2"
-      exitFlag="non-fatal"
+    ("warning")
+        echo_colored $COLOR_YELLOW "[$scriptName, $errorType]" "$2"
+        exitFlag="non-fatal"
     ;;
-    "notice")
-      echo_colored $COLOR_GREEN "[$scriptName, $errorType]" "$2"
-      exitFlag="non-fatal"
+    ("notice")
+        echo_colored $COLOR_GREEN "[$scriptName, $errorType]" "$2"
+        exitFlag="non-fatal"
     ;;
-    "information")
-      echo_colored $COLOR_CYAN "[$scriptName, $errorType]" "$2"
-      exitFlag="non-fatal"
+    ("information")
+        echo_colored $COLOR_CYAN "[$scriptName, $errorType]" "$2"
+        exitFlag="non-fatal"
     ;;
-    "debug")
-      echo_colored $COLOR_WHITE "[$scriptName, $errorType]" "$2"
-      exitFlag="non-fatal"
+    ("debug")
+        echo_colored $COLOR_WHITE "[$scriptName, $errorType]" "$2"
+        exitFlag="non-fatal"
     ;;
-    *)
-      echo_colored $COLOR_RED "[$scriptName, internal error]" "unknown error type, below error is shown"
-      echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-      exitFlag="non-fatal"
+    (*)
+        echo_colored $COLOR_RED "[$scriptName, internal error]" "unknown error type, below error is shown"
+        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
+        exitFlag="non-fatal"
     ;;
   esac
   if [ ${#*} == 3 ]; then
@@ -186,13 +187,12 @@ function tsh_information()
 #   it adds directory to global variable named “result“ which should be an array
 function find_recursive()
 {
-  if [ -d "$1/src" ]; then
-    result[${#result[*]}]="$1"
-  elif [ -d "$1/source" ]; then
-    result[${#result[*]}]="$1"
-  elif [ -d "$1/tests" ]; then
-    result[${#result[*]}]="$1"
-  fi
+  for i in 'source' 'src' 'tests'; do
+    if [ -d "$1/$i" ]; then
+      result[${#result[*]}]="$1"
+      return 0
+    fi
+  done
   for i in "$1"/*; do
     if [ -d "$i" ]; then
       find_recursive $i
@@ -272,16 +272,16 @@ function source_compile()
   sourceFile="$1"
   language="$2"
   case "$language" in
-    "c") suffix="$BINARY_SUFFIX" ;;
-    "cpp") suffix="$BINARY_SUFFIX" ;;
-    "dpr") suffix="$BINARY_SUFFIX" ;;
-    "java") suffix=".class" ;;
-    "pas") suffix="$BINARY_SUFFIX" ;;
-    "pl") suffix=".pl" ;;
-    *) tsh_information "error" "unknown language (“$language”)";;
+    ("c") suffix="$BINARY_SUFFIX" ;;
+    ("cpp") suffix="$BINARY_SUFFIX" ;;
+    ("dpr") suffix="$BINARY_SUFFIX" ;;
+    ("java") suffix=".class" ;;
+    ("pas") suffix="$BINARY_SUFFIX" ;;
+    ("pl") suffix=".pl" ;;
+    (*) tsh_information "error" "unknown language (“$language”)";;
   esac
   if [ ${#*} -lt 3 ]; then
-    targetFile="`echo "$sourceFile" | sed -e 's/\.[^.]*$//'`$suffix"
+    targetFile="$(echo "$sourceFile" | sed -e 's/\.[^.]*$//')$suffix"
   else
     targetFile="$3"
   fi
@@ -291,21 +291,21 @@ function source_compile()
     return;
   fi
   case "$language" in
-    "c") compileCommand="gcc $CFLAGS -o $targetFile -x c $sourceFile" ;;
-    "cpp") compileCommand="g++ $CXXFLAGS -o $targetFile -x c++ $sourceFile" ;;
-    "dpr") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
-    "java") compileCommand="javac $sourceFile" ;;
-    "pas") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
-    "pl") compileCommand="true" ;;
-    *) tsh_information "error" "unknown language (“$language”)";;
+    ("c") compileCommand="gcc $CFLAGS -o $targetFile -x c $sourceFile" ;;
+    ("cpp") compileCommand="g++ $CXXFLAGS -o $targetFile -x c++ $sourceFile" ;;
+    ("dpr") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
+    ("java") compileCommand="javac $sourceFile" ;;
+    ("pas") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
+    ("pl") compileCommand="true" ;;
+    (*) tsh_information "error" "unknown language (“$language”)";;
   esac
   tsh_information "information" "$compileCommand"
   $compileCommand || tsh_information "error" "compile failed"
 }
 
 # source_run — function for running program using one of standart schemes
-#   usage: solution_run <binary-file> <scheme> [<output-file>]
-#   currently there is 1 scheme that differs from others: java
+#   usage: solution_run <binary-file> <scheme> [<input-file> [<output-file>]]
+#   currently there are 2 schemes that differs from others: java and perl
 #   if <output-file> is set, standart output of program is redirected to it
 # TODO: better input/output redirect handling
 function source_run()
@@ -330,12 +330,6 @@ function source_run()
     "pl") runCommand="perl $binaryFile ${*:5}" ;;
     *) tsh_information "error" "unknown language (“$language”)" ;;
   esac
-#  if [ "$inputFile" != "" ]; then
-#    runCommand="$runCommand < $inputFile"
-#  fi
-#  if [ "$outputFile" != "" ]; then
-#    runCommand="$runCommand > $outputFile"
-#  fi
   if [ "$inputFile" == "" ]; then
     if [ "$outputFile" == "" ]; then
       $runCommand || return 1
@@ -349,7 +343,6 @@ function source_run()
       $runCommand < "$inputFile" > "$outputFile" || return 1
     fi
   fi
-#  $runCommand || return 1
 }
 
 
@@ -415,12 +408,18 @@ function readProblemProperties()
     pInputFile=`cat "$problemDirectory/problem.properties" | grep "input-file" | sed -e 's/^input-file *= *//'`
     pOutputFile=`cat "$problemDirectory/problem.properties" | grep "output-file" | sed -e 's/^output-file *= *//'`
   fi
-  if [ "$pInputFile" == "" ] || [ "$pInputFile" == "<stdin>" ]; then
+  if [ "$pInputfile" == "" ]; then # default value of input-file
+    pInputFile="$problemName.in"
+  fi
+  if [ "$pOutputfile" == "" ]; then # default value of output-file
+    pOutputFile="$problemName.out"
+  fi
+  if [ "$pInputFile" == "<stdin>" ]; then
     pInputFileName="$problemName.in"
   else
     pInputFileName="$pInputFile";
   fi
-  if [ "$pOutputFile" == "" ] || [ "$pOutputFile" == "<stdout>" ]; then
+  if [ "$pOutputFile" == "<stdout>" ]; then
     pOutputFileName="$problemName.out"
   else
     pOutputFileName="$pOutputFile";
@@ -435,9 +434,17 @@ t_build()
   problems=(${result[*]});
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
-    problemName="`echo "$problemDirectory" | sed -e 's/^.*[\/.]\([^\/]*\)$/\1/'`"
+    problemName="`echo "$problemDirectory" | sed -e 's/^.*[\/.]\([^\/.]*\)$/\1/'`"
     tsh_information "information" "=== working with problem “$problemName” ==="
     readProblemProperties
+    tsh_information "information" " * directory: $problemDirectory"
+    tsh_information "information" " * input: $pInputFile"
+    tsh_information "information" " * output: $pOutputFile"
+    if [ "$pSolution" == "" ]; then
+      tsh_information "warning" " * solution isn't defined"
+    else
+      tsh_information "information" " * solution: $pSolution"
+    fi
     pSolutionSuffix=""
     if [ "$pSolution" != "" ]; then
       pSolutionSuffix="$pSolution"
@@ -446,16 +453,23 @@ t_build()
       pSolutionSuffix="$1"
     fi
 
-    if [ -d "${problemDirectory}/src" ] ; then
-      pushd "${problemDirectory}/src" > /dev/null
-    elif [ -d "${problemDirectory}/source" ] ; then
-      pushd "${problemDirectory}/source" > /dev/null
-    else
-      pushd "${problemDirectory}/tests" > /dev/null
-    fi
+    sourceDirectory=""
+    for i in 'source' 'src' 'tests'; do
+      if [ -d "$problemDirectory/$i" ]; then
+        sourceDirectory="$problemDirectory/$i"
+        break;
+      fi
+    done
+
+    testsDirectory="$problemDirectory/tests"
+
+    pushd "$sourceDirectory" > /dev/null 2>&1
     # clean:
-    rm --force [0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
-    rm --force ../tests/[0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
+    if [ -d $testsDirectory ]; then
+      rm --force "$testsDirectory"/[0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
+    fi
+
+    # run scripts:
     if [ -f "doall.sh" ]; then
       tsh_information "information" "run doall.sh"
       "./doall.sh" || tsh_information "error" "doall.sh failed"
@@ -515,26 +529,17 @@ t_build()
     validatorName=""
     validatorLanguage=""
     validatorBinary=""
-    if find_source "validator"; then # TODO: list of parameters for find_source
-      validatorName="validator.$result"
-      validatorLanguage="$result"
-      validatorBinary="validator"
-    elif find_source "validate"; then
-      validatorName="validate.$result"
-      validatorLanguage="$result"
-      validatorBinary="validate"
-    elif find_source "../src/validator"; then
-      validatorName="../src/validator.$result"
-      validatorLanguage="$result"
-      validatorBinary="../src/validator"
-    elif find_source "../src/validate"; then
-      validatorName="../src/validate.$result"
-      validatorLanguage="$result"
-      validatorBinary="../src/validate"
-    else
+    for i in '../source/validator' '../source/validate' '../src/validator' '../src/validate' 'validator' 'validate'; do
+      if find_source "$i"; then
+        validatorName="$i.$result"
+        validatorLanguage="$result"
+        validatorBinary="$i"
+        break;
+      fi
+    done
+    if [ "$validatorName" == "" ]; then
       tsh_information "warning" "validator not found, tests wouldn't be validated"
-    fi
-    if [ "$validatorLanguage" != "" ]; then
+    else
       source_compile "$validatorName" "$validatorLanguage" "$validatorBinary"
       validatorBinary="$result"
       tsh_information -n "information" "validating tests"
@@ -619,19 +624,19 @@ t_clean()
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     pushd "$problemDirectory" > /dev/null
-    rm --force *.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
-    rm --force tests/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
     if [ "$1" != "--no-remove-tests" ]; then
       rm --force tests/[0-9][0-9]{,[0-9]}{,.a}
     fi
     rm --force tests/tests.gen
-    clean_binary .
-    if [ -d "src" ] ; then
-      clean_binary "src"
-    fi
-    clean_binary "tests"
-    if [ -d "src" ] ; then
-      rmdir "tests" || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
+    for i in '.' 'source' 'src' 'tests'; do
+      if ! [ -d "$i" ]; then
+        continue;
+      fi
+      rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
+      clean_binary "$i"
+    done
+    if [ -d "src" ] || [ -d "source" ]; then
+      rmdir "tests" || [ "$1" == "--no-remove-tests" ] || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
     fi
     popd > /dev/null
   done
@@ -656,12 +661,12 @@ t_usage()
 tCommand="$1"
 
 case "$tCommand" in
-  "build") t_build ${*:2} ;;
-  "check") t_check ${*:2} ;;
-  "clean") t_clean ${*:2} ;;
-  "help") t_help ${*:2} ;;
-  "") t_usage ;;
-  *) echo "$scriptName: $tCommand: unknown command"
-     echo "try “$scriptName help”" ;;
+  ("build") t_build ${*:2} ;;
+  ("check") t_check ${*:2} ;;
+  ("clean") t_clean ${*:2} ;;
+  ("help") t_help ${*:2} ;;
+  ("") t_usage ;;
+  (*) echo "$scriptName: $tCommand: unknown command"
+      echo "try “$scriptName help”" ;;
 esac
 
