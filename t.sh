@@ -467,6 +467,8 @@ t_build()
     # clean:
     if [ -d $testsDirectory ]; then
       rm --force "$testsDirectory"/[0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
+    else
+      mkdir "$testsDirectory" || tsh_information "fatal" "mkdir failed"
     fi
 
     # run scripts:
@@ -481,7 +483,6 @@ t_build()
         doallName="doall.cmd"
       else
         doallName="doall.bat"
-      
       fi
       tsh_information "error" "found “$doallName” instead of “doall.sh”" "non-fatal"
       tsh_information "error" "  this might work under outdated OS like Windows" "non-fatal"
@@ -492,21 +493,26 @@ t_build()
       counterDo="0";
 #      for j in `seq -w 00 99`; do
 # This is still not enough good, replaced for compatibility.
-      for (( i = 0; i < 100; i++ )) ; do
-        j=`printf "%02d" $i`
+      for (( __j = 0; __j < 100; __j++ )) ; do
+        j=`printf "%02d" $__j`
         if [ -f "$j.hand" ]; then
           counterHand=$(($counterHand + 1))
-          cp "$j.hand" "$j"
+          cp "$j.hand" "$testsDirectory/$j"
         elif [ -f "$j.manual" ]; then
           counterHand=$(($counterHand + 1))
-          cp "$j.manual" "$j"
-        else
-          find_source "do$j" || continue
-          doSuffix="$result"
+          cp "$j.manual" "$testsDirectory/$j"
+        elif find_source "do$j"; then
           counterDo=$(($counterDo + 1))
-          source_compile "do$j$doSuffix" "$doSuffix"
+          doSuffix="$result"
+          source_compile "do$j.$doSuffix" "$doSuffix"
           doBinary="$result"
-          source_run "$doBinary" "$doSuffix" "" "$j"
+          source_run "$doBinary" "$doSuffix" "" "$testsDirectory/$j"
+        elif find_source "gen$j"; then
+          counterDo=$(($counterDo + 1))
+          doSuffix="$result"
+          source_compile "gen$j.$doSuffix" "$doSuffix"
+          doBinary="$result"
+          source_run "$doBinary" "$doSuffix" "" "$testsDirectory/$j"
         fi
       done
       if ! [ "$counterHand" == "0" ]; then
