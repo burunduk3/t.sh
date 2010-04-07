@@ -9,3 +9,9 @@
   1) [done] -D __T_SH__
   2) [done] .exe suffix
   3) [done] stack for windows in gcc
+== misc ==
+  add asserts like
+  if [ "$UNICODE" == "" ]; then
+    echo "No unicode support!"
+    exit 1
+  fi
