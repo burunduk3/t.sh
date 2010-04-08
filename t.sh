@@ -641,8 +641,8 @@ t_clean()
       rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
       clean_binary "$i"
     done
-    if [ -d "src" ] || [ -d "source" ]; then
-      rmdir "tests" || [ "$1" == "--no-remove-tests" ] || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
+    if ( [ -d "src" ] || [ -d "source" ] ) && [ "$1" != "--no-remove-tests" ] && [ -d "tests" ] ; then
+      rmdir "tests" || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
     fi
     popd > /dev/null
   done
