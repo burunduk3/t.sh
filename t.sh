@@ -408,21 +408,21 @@ function readProblemProperties()
     pInputFile=`cat "$problemDirectory/problem.properties" | grep "input-file" | sed -e 's/^input-file *= *//'`
     pOutputFile=`cat "$problemDirectory/problem.properties" | grep "output-file" | sed -e 's/^output-file *= *//'`
   fi
-  if [ "$pInputfile" == "" ]; then # default value of input-file
+  if [ "$pInputFile" == "" ]; then # default value of input-file
     pInputFile="$problemName.in"
   fi
-  if [ "$pOutputfile" == "" ]; then # default value of output-file
+  if [ "$pOutputFile" == "" ]; then # default value of output-file
     pOutputFile="$problemName.out"
   fi
   if [ "$pInputFile" == "<stdin>" ]; then
     pInputFileName="$problemName.in"
   else
-    pInputFileName="$pInputFile";
+    pInputFileName="$pInputFile"
   fi
   if [ "$pOutputFile" == "<stdout>" ]; then
     pOutputFileName="$problemName.out"
   else
-    pOutputFileName="$pOutputFile";
+    pOutputFileName="$pOutputFile"
   fi
 }
 
@@ -571,16 +571,23 @@ t_build()
         continue
       fi
       echo -n "."
-      cp "$testNumber" "$problemName.in"
-      if [ "$pOutputFile" == "<stdout>" ]; then
-        source_run "$solutionBinary" "$solutionLanguage" "" "$pOutputFileName" || tsh_information "error" "solution failed on test [$testNumber]"
+      cp "$testNumber" "$pInputFileName"
+      cp "$testNumber" "$pInputFileName"
+      if [ "$pInputFile" == "<stdin>" ]; then
+        inputFile="$pInputFileName";
       else
-        source_run "$solutionBinary" "$solutionLanguage" || tsh_information "error" "solution failed on test [$testNumber]"
+        inputFile=""
       fi
+      if [ "$pOutputFile" == "<stdout>" ]; then
+        outputFile="$pOutputFileName";
+      else
+        outputFile=""
+      fi
+      source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_information "error" "solution failed on test [$testNumber]"
       cp "$pOutputFileName" "$testNumber.a"
     done
     echo "ok"
-    rm --force "$problemName."{in,out}
+    rm --force "$pInputFileName" "$pOutputFileName"
     do_check "$problemName" "$solutionBinary" "$solutionLanguage"
     popd > /dev/null
   done
