@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r1
+# version 0.01-r2  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -648,6 +648,13 @@ t_clean()
       rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
       clean_binary "$i"
     done
+    # try to invoke custom clear scripts
+    for i in 'src' 'source' 'tests'; do
+      pushd "$i" > /dev/null
+      [ -f wipe.py ] && (python wipe.py || tsh_information 'error' "wipe.py failed")
+      popd > /dev/null
+    done
+    # remove tests directory sometimes
     if ( [ -d "src" ] || [ -d "source" ] ) && [ "$1" != "--no-remove-tests" ] && [ -d "tests" ] ; then
       rmdir "tests" || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
     fi
