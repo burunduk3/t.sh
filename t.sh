@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r2  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r3  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -650,6 +650,9 @@ t_clean()
     done
     # try to invoke custom clear scripts
     for i in 'src' 'source' 'tests'; do
+      if ! [ -d "$i" ]; then
+        continue
+      fi
       pushd "$i" > /dev/null
       [ -f wipe.py ] && (python wipe.py || tsh_information 'error' "wipe.py failed")
       popd > /dev/null
