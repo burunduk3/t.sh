@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r3  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r4  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -596,7 +596,7 @@ t_build()
 clean_binary()
 {
   for i in "$1"/*; do
-    if [ -f "$i.cpp" ] || [ -f "$i.c" ] || [ -f "$i.dpr" ] || [ -f "$i.pas" ] || [ -f "$i.PAS" ]; then
+    if [ -f "$i.cpp" ] || [ -f "$i.c++" ] || [ -f "$i.c" ] || [ -f "$i.dpr" ] || [ -f "$i.pas" ] || [ -f "$i.PAS" ]; then
       tsh_information "information" "removed: $i"
       rm --force "$i"
     fi
