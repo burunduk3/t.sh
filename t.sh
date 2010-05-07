@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r4  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r5  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -532,6 +532,15 @@ t_build()
       continue
     fi
     tsh_information "information" "found tests: ${#tests[*]}"
+    tsh_information -n "information" "converting tests"
+    for testNumber in ${tests[*]}; do
+      echo -n '.'
+      case "$OPERATION_SYSTEM" in
+        ('Linux') dos2unix "$testNumber" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}” failed";;
+        (*) unix2dos "$testNumber" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}” failed";;
+      esac
+    done
+    echo 'ok'
     validatorName=""
     validatorLanguage=""
     validatorBinary=""
