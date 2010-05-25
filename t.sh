@@ -1,13 +1,19 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r5  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r6  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
+# t.sh is been developed in svn: https://burunduk3.geins.ru/public/t.sh
+# You can take latest t.sh version from there. And, when you make
+# changes to t.sh, please commit it to this repository. Ask Oleg
+# Davydov (burunduk3@gmail.com, vk.com/burunduk3) if you don't have
+# access.
+
 # questions
 #   1. If there is directory “tests”, shall we recursive scan into subdirectories?
-#   2. If there is directory “src”, should “clean” command remove “tests” directory?
+#   2. If there is directory “src”, should “clean” command remove “tests” directory? yes
 
 # todo
 #   1. Parameters for running java and compiling all
@@ -24,7 +30,6 @@
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
 
 scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
-#INCLUDE_PATH="`echo $0 | sed -e 's/\/.*$//'`/../../include"
 INCLUDE_PATH="../../../include"
 
 OPERATION_SYSTEM=`uname || echo 'system_error'` # Windows is system error ^_~
@@ -113,7 +118,7 @@ COLOR_WHITE="1;37"
 COLOR_BLUE="1;34"
 COLOR_PURPLE="1;35"
 COLOR_CYAN="1;36"
-COLOR_DISABLE="0"
+COLOR_DISABLE='false'
 
 # tsh_information: print message and exits if out to be so.
 #   usage: tsh_information [-n] <error-type> <error-message> [<exit-flag>]
