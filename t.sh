@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r6  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r7  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -28,6 +28,7 @@
 #   3. 2009-11-17: seq -> printf
 #   4. 2009-11-20: -D__T_SH__
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
+#   6. 2010-06-08: Python & bash support
 
 scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
 INCLUDE_PATH="../../../include"
@@ -283,6 +284,8 @@ function source_compile()
     ("java") suffix=".class" ;;
     ("pas") suffix="$BINARY_SUFFIX" ;;
     ("pl") suffix=".pl" ;;
+    ("py") suffix=".py" ;;
+    ("sh") suffix=".sh" ;;
     (*) tsh_information "error" "unknown language (“$language”)";;
   esac
   if [ ${#*} -lt 3 ]; then
@@ -302,6 +305,8 @@ function source_compile()
     ("java") compileCommand="javac $sourceFile" ;;
     ("pas") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
     ("pl") compileCommand="true" ;;
+    ("py") compileCommand="true" ;;
+    ("sh") compileCommand="true" ;;
     (*) tsh_information "error" "unknown language (“$language”)";;
   esac
   tsh_information "information" "$compileCommand"
@@ -333,6 +338,8 @@ function source_run()
     ;;
     "pas") runCommand="./$binaryFile ${*:5}" ;;
     "pl") runCommand="perl $binaryFile ${*:5}" ;;
+    "py") runCommand="python $binaryFile ${*:5}" ;;
+    "sh") runCommand="bash $binaryFile ${*:5}" ;;
     *) tsh_information "error" "unknown language (“$language”)" ;;
   esac
   if [ "$inputFile" == "" ]; then
