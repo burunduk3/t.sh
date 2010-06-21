@@ -29,7 +29,8 @@
 #   4. 2009-11-20: -D__T_SH__
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
 #   6. 2010-06-08: Python & bash support
-#   7. 2010-06-21: Some help; -t as an alias for --no-remove-tests
+#   7. 2010-06-21: Some help; -t as an alias for --no-remove-tests;
+#      doall is handled in a more common way
 
 scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
 INCLUDE_PATH="../../../include"
@@ -238,7 +239,7 @@ function find_problem()
 #   if found also returns suffix in “result” global variable
 function find_source()
 {
-  for test_source_i in c cpp dpr java pas pl; do
+  for test_source_i in c cpp dpr java pas pl py sh; do
     if [ -f "$1.$test_source_i" ]; then
       result="$test_source_i"
       return 0
@@ -491,22 +492,27 @@ t_build()
     fi
 
     # run scripts:
-    if [ -f "doall.sh" ]; then
-      tsh_information "information" "run doall.sh"
-      "./doall.sh" || tsh_information "error" "doall.sh failed"
-    elif [ -f "doall.py" ]; then
-      tsh_information "information" "run doall.py"
-      python "doall.py" || tsh_information "error" "doall.py failed"
-    elif [ -f doall.bat ] || [ -f doall.cmd ]; then
-      if [ -f doall.cmd ]; then
-        doallName="doall.cmd"
-      else
-        doallName="doall.bat"
-      fi
-      tsh_information "error" "found “$doallName” instead of “doall.sh”" "non-fatal"
-      tsh_information "error" "  this might work under outdated OS like Windows" "non-fatal"
-      tsh_information "error" "  but please add sh version of doall for compatibility" "non-fatal"
-      cmd.exe "$doallName" || tsh_information "fatal" "cannot run “$doallName”"
+    if find_source "doall" ; then
+      doSuffix="$result"
+      source_compile "doall.$doSuffix" "$doSuffix"
+      doBinary="$result"
+      source_run "$doBinary" "$doSuffix" "" ""
+#    if [ -f "doall.sh" ]; then
+#      tsh_information "information" "run doall.sh"
+#      "./doall.sh" || tsh_information "error" "doall.sh failed"
+#    elif [ -f "doall.py" ]; then
+#      tsh_information "information" "run doall.py"
+#      python "doall.py" || tsh_information "error" "doall.py failed"
+#    elif [ -f doall.bat ] || [ -f doall.cmd ]; then
+#      if [ -f doall.cmd ]; then
+#        doallName="doall.cmd"
+#      else
+#        doallName="doall.bat"
+#      fi
+#      tsh_information "error" "found “$doallName” instead of “doall.sh”" "non-fatal"
+#      tsh_information "error" "  this might work under outdated OS like Windows" "non-fatal"
+#      tsh_information "error" "  but please add sh version of doall for compatibility" "non-fatal"
+#      cmd.exe "$doallName" || tsh_information "fatal" "cannot run “$doallName”"
     else
       counterHand="0";
       counterDo="0";
