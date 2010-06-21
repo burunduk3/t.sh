@@ -85,7 +85,13 @@ function help_common()
 
 function help_usage()
 {
-  echo "TODO: usage!"
+  echo "t.sh is a test management tool"
+  echo "Usage: t.sh build|check|clean|help [<options>]"
+  echo "  build — build all problems in current firectory (generate & validate tests,"
+  echo "          generate answers."
+  echo "  check — check a solution."
+  echo "  clean — cleanup everything created by a run of build"
+  echo "  help — display more detailed help on a command"
 }
 
 
