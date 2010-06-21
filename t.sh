@@ -497,22 +497,6 @@ t_build()
       source_compile "doall.$doSuffix" "$doSuffix"
       doBinary="$result"
       source_run "$doBinary" "$doSuffix" "" ""
-#    if [ -f "doall.sh" ]; then
-#      tsh_information "information" "run doall.sh"
-#      "./doall.sh" || tsh_information "error" "doall.sh failed"
-#    elif [ -f "doall.py" ]; then
-#      tsh_information "information" "run doall.py"
-#      python "doall.py" || tsh_information "error" "doall.py failed"
-#    elif [ -f doall.bat ] || [ -f doall.cmd ]; then
-#      if [ -f doall.cmd ]; then
-#        doallName="doall.cmd"
-#      else
-#        doallName="doall.bat"
-#      fi
-#      tsh_information "error" "found “$doallName” instead of “doall.sh”" "non-fatal"
-#      tsh_information "error" "  this might work under outdated OS like Windows" "non-fatal"
-#      tsh_information "error" "  but please add sh version of doall for compatibility" "non-fatal"
-#      cmd.exe "$doallName" || tsh_information "fatal" "cannot run “$doallName”"
     else
       counterHand="0";
       counterDo="0";
