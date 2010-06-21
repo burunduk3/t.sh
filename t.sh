@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r7  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r8  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -29,6 +29,7 @@
 #   4. 2009-11-20: -D__T_SH__
 #   5. 40-034 (20010-02-04): added compile skipping (like make)
 #   6. 2010-06-08: Python & bash support
+#   7. 2010-06-21: Some help; -t as an alias for --no-remove-tests
 
 scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
 INCLUDE_PATH="../../../include"
@@ -664,7 +665,7 @@ t_clean()
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     pushd "$problemDirectory" > /dev/null
-    if [ "$1" != "--no-remove-tests" ]; then
+    if [ "$1" != "--no-remove-tests" ] && [ "$1" != "-t" ]; then
       rm --force tests/[0-9][0-9]{,[0-9]}{,.a}
     fi
     rm --force tests/tests.gen
