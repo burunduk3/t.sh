@@ -496,7 +496,7 @@ t_build()
       doSuffix="$result"
       source_compile "doall.$doSuffix" "$doSuffix"
       doBinary="$result"
-      source_run "$doBinary" "$doSuffix" "" ""
+      source_run "$doBinary" "$doSuffix" "" ""  || tsh_information "error" "doall.sh failed"
     else
       counterHand="0";
       counterDo="0";
