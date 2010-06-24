@@ -5,15 +5,15 @@
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
-# t.sh is been developed in svn: https://burunduk3.geins.ru/public/t.sh
-# You can take latest t.sh version from there. And, when you make
-# changes to t.sh, please commit it to this repository. Ask Oleg
-# Davydov (burunduk3@gmail.com, vk.com/burunduk3) if you don't have
-# access.
+# t.sh is being developed in a Subversion repository:
+# https://burunduk3.geins.ru/public/t.sh
+# You can get latest t.sh version there. And, when you make changes to t.sh,
+# please commit it to this repository. Ask Oleg Davydov (burunduk3@gmail.com,
+# vk.com/burunduk3) if you don't have access.
 
 # questions
 #   1. If there is directory “tests”, shall we recursive scan into subdirectories?
-#   2. If there is directory “src”, should “clean” command remove “tests” directory? yes
+#   2. If there is directory “src”, ddshould “clean” command remove “tests” directory? yes
 
 # todo
 #   1. Parameters for running java and compiling all
@@ -21,6 +21,7 @@
 #   3. Advanced coloring
 #   4. Standard input/output (option?)
 #   5. Replace printf "%02d" $i (ex-seq...) with something even more appropriate.
+#      (I suppose grepping smth like [0-9]{2-3} and so on. -- Yury Petrov)
 
 # changelog
 #   1. 2009-11-06: src directory support
@@ -31,8 +32,9 @@
 #   6. 2010-06-08: Python & bash support
 #   7. 2010-06-21: Some help; -t as an alias for --no-remove-tests;
 #      doall is handled in a more common way
+#   8. 2010-06-24: Help about clean, minor fixes
 
-scriptName="`echo $0 | sed -e 's/^.*\/\([^\/]*$\)/\1/'`"
+scriptName=`basename $0`
 INCLUDE_PATH="../../../include"
 
 OPERATION_SYSTEM=`uname || echo 'system_error'` # Windows is system error ^_~
@@ -76,6 +78,18 @@ function help_build()
   echo "  Step 4: check"
   echo "    If some checker is present (a program named “check”, “checker”, “check_<problem>”),"
   echo "    the model solution is run on every test and checked using that checker."
+}
+
+function help_build()
+{
+  echo "clean: remove stuff created during build/check/etc"
+  echo "  Parameters:"
+  echo "    --no-remove-tests (-t): do not remove tests created by t.sh"
+  echo "  Note: this command might might do something that you do not expect as it"
+  echo "  uses heuristics to determine files for removal. In a problem directory"
+  echo "  for each source file recognised t.sh will remove file that it would expect"
+  echo "  to be the result of its compilation. Second, the “tests” directory wiil be"
+  echo "  removed, if no --no-remove-tests option was specified."
 }
 
 function help_common()
@@ -500,8 +514,6 @@ t_build()
     else
       counterHand="0";
       counterDo="0";
-#      for j in `seq -w 00 99`; do
-# This is still not enough good, replaced for compatibility.
       for (( __j = 0; __j < 100; __j++ )) ; do
         j=`printf "%02d" $__j`
         if [ -f "$j.hand" ]; then
@@ -687,6 +699,7 @@ t_help()
 {
   case "$1" in
     "build") help_build;;
+    "clean") help_clean;;
     *) help_common;;
   esac
 }
