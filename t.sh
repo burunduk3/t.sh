@@ -22,6 +22,9 @@
 #   4. Standard input/output (option?)
 #   5. Replace printf "%02d" $i (ex-seq...) with something even more appropriate.
 #      (I suppose grepping smth like [0-9]{2-3} and so on. -- Yury Petrov)
+#   6. Add statistics (using time?)
+#   7. t.sh check xx --allow-wa
+#   8. Kill if TL (ulimit?)
 
 # changelog
 #   1. 2009-11-06: src directory support
