@@ -565,10 +565,14 @@ t_build()
       case "$OPERATION_SYSTEM" in
         ('Linux')
           dos2unix "$testNumber" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}” failed"
-          dos2unix "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}.a” failed";;
+          if [ -e "$testNumber.a" ] ; then
+            dos2unix "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}.a” failed"
+          fi ;;
         (*)
           unix2dos "$testNumber" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}” failed"
-          unix2dos "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}.a” failed";;
+          if [ -e "$testNumber.a" ] ; then
+            unix2dos "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}.a” failed"
+          fi ;;
       esac
     done
     echo 'ok'
