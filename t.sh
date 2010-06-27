@@ -13,7 +13,7 @@
 
 # questions
 #   1. If there is directory “tests”, shall we recursive scan into subdirectories?
-#   2. If there is directory “src”, ddshould “clean” command remove “tests” directory? yes
+#   2. If there is directory “src”, should “clean” command remove “tests” directory? yes
 
 # todo
 #   1. Parameters for running java and compiling all
@@ -25,6 +25,9 @@
 #   6. Add statistics (using time?)
 #   7. t.sh check xx --allow-wa
 #   8. Kill if TL (ulimit?)
+#   9. Rewrite clean: do not remove files that don't have to be removed.
+#      Store list of files created during build in smth like .t.sh.list
+#      using a kind of diff of ls's before and after.
 
 # changelog
 #   1. 2009-11-06: src directory support
@@ -560,8 +563,12 @@ t_build()
     for testNumber in ${tests[*]}; do
       echo -n '.'
       case "$OPERATION_SYSTEM" in
-        ('Linux') dos2unix "$testNumber" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}” failed";;
-        (*) unix2dos "$testNumber" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}” failed";;
+        ('Linux')
+          dos2unix "$testNumber" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}” failed"
+          dos2unix "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}.a” failed";;
+        (*)
+          unix2dos "$testNumber" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}” failed"
+          unix2dos "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}.a” failed";;
       esac
     done
     echo 'ok'
