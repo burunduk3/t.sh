@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r8  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r9  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -39,6 +39,7 @@
 #   7. 2010-06-21: Some help; -t as an alias for --no-remove-tests;
 #      doall is handled in a more common way
 #   8. 2010-06-24: Help about clean, minor fixes
+#   9. 40-178 (2010-06-28): better argument parsing
 
 scriptName=`basename $0`
 INCLUDE_PATH="../../../include"
@@ -489,8 +490,8 @@ t_build()
     if [ "$pSolution" != "" ]; then
       pSolutionSuffix="$pSolution"
     fi
-    if [ "$1" != "" ]; then
-      pSolutionSuffix="$1"
+    if [ "${tParameters[1]}" != '' ]; then
+      pSolutionSuffix="${tParameters[1]}"
     fi
 
     sourceDirectory=""
@@ -657,7 +658,7 @@ t_check()
     tsh_information "information" "=== working with problem “$problemName” ==="
     readProblemProperties
     pushd "$problemDirectory/tests" > /dev/null
-    solutionSuffix="$1"
+    solutionSuffix="${tParameters[1]}"
     if ! find_solution "../" "$solutionSuffix" "$problemName"; then
       tsh_information "warning" "solution not found: “$solutionSuffix”"
       popd > /dev/null
@@ -681,7 +682,7 @@ t_clean()
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     pushd "$problemDirectory" > /dev/null
-    if [ "$1" != "--no-remove-tests" ] && [ "$1" != "-t" ]; then
+    if [ "$arg_NoRemoveTests" != 'true' ]; then
       rm --force tests/[0-9][0-9]{,[0-9]}{,.a}
     fi
     rm --force tests/tests.gen
@@ -702,7 +703,7 @@ t_clean()
       popd > /dev/null
     done
     # remove tests directory sometimes
-    if ( [ -d "src" ] || [ -d "source" ] ) && [ "$1" != "--no-remove-tests" ] && [ -d "tests" ] ; then
+    if ( [ -d "src" ] || [ -d "source" ] ) && [ "$arg_NoRemoveTests" != 'true' ] && [ -d "tests" ] ; then
       rmdir "tests" || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
     fi
     popd > /dev/null
@@ -711,10 +712,10 @@ t_clean()
 
 t_help()
 {
-  case "$1" in
-    "build") help_build;;
-    "clean") help_clean;;
-    *) help_common;;
+  case "${tParameters[1]}" in
+    ('build') help_build;;
+    ('clean') help_clean;;
+    (*) help_common;;
   esac
 }
 
@@ -726,14 +727,25 @@ t_usage()
 
 # code ^_^
 
-tCommand="$1"
+# parse command line
+tParameters=()
+for i in $*; do
+  if [ "$i" == '--allow-wa' ]; then
+    arg_AllowWA='true'
+  elif [ "$i" == '--no-remove-tests' ] || [ "$i" == '-t' ]; then
+    arg_NoRemoveTests='true'
+  else
+    tParameters[${#tParameters[*]}]="$i"
+  fi
+done
+tCommand="${tParameters[0]}"
 
 case "$tCommand" in
-  ("build") t_build ${*:2} ;;
-  ("check") t_check ${*:2} ;;
-  ("clean") t_clean ${*:2} ;;
-  ("help") t_help ${*:2} ;;
-  ("") t_usage ;;
+  ('build') t_build;;
+  ('check') t_check;;
+  ('clean') t_clean;;
+  ('help') t_help;;
+  ('') t_usage;;
   (*) echo "$scriptName: $tCommand: unknown command"
       echo "try “$scriptName help”" ;;
 esac
