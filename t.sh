@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # t.sh test tool — clone of outdated t.cmd
-# version 0.01-r9  Every time you commit modified version of t.sh, increment -r<number>
+# version 0.01-r10  Every time you commit modified version of t.sh, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
@@ -23,8 +23,8 @@
 #   5. Replace printf "%02d" $i (ex-seq...) with something even more appropriate.
 #      (I suppose grepping smth like [0-9]{2-3} and so on. -- Yury Petrov)
 #   6. Add statistics (using time?)
-#   7. t.sh check xx --allow-wa
-#   8. Kill if TL (ulimit?)
+#   7. t.sh check xx --allow-wa [done]
+#   8. Kill if TL (ulimit)
 #   9. Rewrite clean: do not remove files that don't have to be removed.
 #      Store list of files created during build in smth like .t.sh.list
 #      using a kind of diff of ls's before and after.
@@ -40,6 +40,7 @@
 #      doall is handled in a more common way
 #   8. 2010-06-24: Help about clean, minor fixes
 #   9. 40-178 (2010-06-28): better argument parsing
+#      added --allow-wa
 
 scriptName=`basename $0`
 INCLUDE_PATH="../../../include"
@@ -421,6 +422,10 @@ function do_check()
   source_compile "$checkerName" "$checkerLanguage"
   checkerBinary="$result"
   tsh_information "information" "checking solution"
+  checkerError='error'
+  if [ "$arg_AllowWA" == 'true' ]; then
+    checkerError='warning'
+  fi
   for testNumber in ${tests[*]}; do
     tsh_information -n "information" "test [$testNumber] "
     cp "$testNumber" "$pInputFileName"
@@ -435,7 +440,7 @@ function do_check()
       outputFile=""
     fi
     source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_information "error" "solution failed on test [$testNumber]"
-    source_run "$checkerBinary" "$checkerLanguage" "" "" "$testNumber" "$pOutputFileName" "$testNumber.a" || tsh_information "error" "check failed on test [$testNumber]"
+    source_run "$checkerBinary" "$checkerLanguage" "" "" "$testNumber" "$pOutputFileName" "$testNumber.a" || tsh_information "$checkerError" "check failed on test [$testNumber]"
   done
   rm --force "$problemName."{in,out}
 }
