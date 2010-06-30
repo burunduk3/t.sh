@@ -6,7 +6,7 @@
 # This program is free sortware, under GPL, for great justice...
 
 # t.sh is being developed in a Subversion repository:
-# https://burunduk3.geins.ru/public/t.sh
+# https://burunduk3.geins.ru/svn/public/t.sh
 # You can get latest t.sh version there. And, when you make changes to t.sh,
 # please commit it to this repository. Ask Oleg Davydov (burunduk3@gmail.com,
 # vk.com/burunduk3) if you don't have access.
