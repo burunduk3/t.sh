@@ -318,14 +318,15 @@ function source_compile()
   sourceFile="$1"
   language="$2"
   case "$language" in
-    ("c") suffix="$BINARY_SUFFIX" ;;
-    ("cpp") suffix="$BINARY_SUFFIX" ;;
-    ("dpr") suffix="$BINARY_SUFFIX" ;;
-    ("java") suffix=".class" ;;
-    ("pas") suffix="$BINARY_SUFFIX" ;;
-    ("pl") suffix=".pl" ;;
-    ("py") suffix=".py" ;;
-    ("sh") suffix=".sh" ;;
+    ('c') suffix="$BINARY_SUFFIX" ;;
+    ('cpp') suffix="$BINARY_SUFFIX" ;;
+    ('c++') suffix="$BINARY_SUFFIX" ;;
+    ('dpr') suffix="$BINARY_SUFFIX" ;;
+    ('java') suffix=".class" ;;
+    ('pas') suffix="$BINARY_SUFFIX" ;;
+    ('pl') suffix=".pl" ;;
+    ('py') suffix=".py" ;;
+    ('sh') suffix=".sh" ;;
     (*) tsh_information "error" "unknown language (“$language”)";;
   esac
   if [ ${#*} -lt 3 ]; then
@@ -341,6 +342,7 @@ function source_compile()
   case "$language" in
     ("c") compileCommand="gcc $CFLAGS -o $targetFile -x c $sourceFile" ;;
     ("cpp") compileCommand="g++ $CXXFLAGS -o $targetFile -x c++ $sourceFile" ;;
+    ('c++') compileCommand="g++ $CXXFLAGS -o $targetFile -x c++ $sourceFile" ;;
     ("dpr") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
     ("java") compileCommand="javac $sourceFile" ;;
     ("pas") compileCommand="fpc $FPCFLAGS -o$targetFile $sourceFile" ;;
@@ -366,11 +368,12 @@ function source_run()
   outputFile="$4"
   case "$language" in
     "c") runCommand="./$binaryFile ${*:5}" ;;
+    'c++') runCommand="./$binaryFile ${*:5}" ;;
     "cpp") runCommand="./$binaryFile ${*:5}" ;;
     "dpr") runCommand="./$binaryFile ${*:5}" ;;
     "java")
-      classPath=`echo "$binaryFile" | sed -e "s/\/[^\/]*$//"`
-      className=`echo "$binaryFile" | sed -e "s/^.*\/\([^\/]*\)\.class$/\1/"`
+      classPath=`echo "./$binaryFile" | sed -e "s/\/[^\/]*$//"`
+      className=`echo "./$binaryFile" | sed -e "s/^.*\/\([^\/]*\)\.class$/\1/"`
       if [ "$classPath" == "" ]; then
         classPath="."
       fi
