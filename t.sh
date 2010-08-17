@@ -41,6 +41,7 @@
 #   8. 2010-06-24: Help about clean, minor fixes
 #   9. 40-178 (2010-06-28): better argument parsing
 #      added --allow-wa
+#  10. 2010-07-18: Java path bugfix
 
 scriptName=`basename $0`
 INCLUDE_PATH="../../../include"
