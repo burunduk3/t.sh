@@ -20,7 +20,7 @@ function source_compile()
     ('pl') suffix=".pl" ;;
     ('py') suffix=".py" ;;
     ('sh') suffix=".sh" ;;
-    (*) tsh_message"error" "unknown language (“$language”)";;
+    (*) tsh_message "error" "unknown language (“$language”)";;
   esac
   if [ ${#*} -lt 3 ]; then
     targetFile="$(echo "$sourceFile" | sed -e 's/\.[^.]*$//')$suffix"
@@ -74,7 +74,8 @@ function source_run()
     ;;
     "pas") runCommand="./$binaryFile ${*:5}" ;;
     "pl") runCommand="perl $binaryFile ${*:5}" ;;
-    "py") runCommand="python $binaryFile ${*:5}" ;;
+    #"py") runCommand="python $binaryFile ${*:5}" ;;
+    "py") runCommand="./$binaryFile ${*:5}" ;;
     "sh") runCommand="bash $binaryFile ${*:5}" ;;
     *) tsh_message "error" "unknown language (“$language”)" ;;
   esac

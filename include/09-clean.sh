@@ -51,7 +51,7 @@ t_clean()
       if ! [ -d "$i" ]; then
         continue;
       fi
-      rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
+      rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest,pyc,pyo}
       clean_binary "$i"
     done
     # try to invoke custom clear scripts

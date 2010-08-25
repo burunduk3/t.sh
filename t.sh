@@ -43,6 +43,14 @@
 #      added --allow-wa
 #  10. 2010-07-18: Java path bugfix
 
+#name=`stat "$0" --format '%n'`
+#while [[ `stat "$name" --format '%F'` == 'symbolic link' ]]; do
+#  name=`stat "$name" --format '%N' | sed -e $'s/^\`[^\']*\' -\> \`\\([^\']*\\)\'/\\1/'`
+#done
+#echo "nane = $name"
+#echo "${0%/*}/"
+
+
 scriptName=`basename $0`
 INCLUDE_PATH="../../../include"
 
@@ -68,7 +76,6 @@ if [ "$OPERATION_SYSTEM" != "Linux" ]; then
   CXXFLAGS="$CXXFLAGS -Wl,--stack=134217728"
   BINARY_SUFFIX=".exe"
 fi
-
 
 # === help messages ===
 
@@ -130,27 +137,17 @@ function help_usage()
 }
 
 
-# === commmon functions ===
 
 # echo_colored: outputs one-line colored message
 #   usage: echo_colored <color> <message>
 #   color should be in vt100 style (for example, “1;31” means bold red)
 #   COLOR_* consants can be used
 #   variable COLOR_DISABLE disables coloring when equals to “true”
-#   variable lineBreak disables line break after output when equals to “false”
-function echo_colored()
-{
-  if [ "$COLOR_DISABLE" == "true" ]; then
-    if [ "$lineBreak" == "false" ]; then
-      echo -n "$1"
-    else
-      echo "$1"
-    fi
+function echo_colored() {
+  if [ "$COLOR_DISABLE" == 'true' ]; then
+    echo "${*:2}"
   else
-    echo -n $'\e['$1'm'"${*:2}"$'\e[0m'
-    if [ "$lineBreak" != "false" ]; then
-      echo ""
-    fi
+    echo $'\e['"$1"'m'"${*:2}"$'\e[0m'
   fi
 }
 COLOR_RED="1;31"
@@ -162,8 +159,8 @@ COLOR_PURPLE="1;35"
 COLOR_CYAN="1;36"
 COLOR_DISABLE='false'
 
-# tsh_information: print message and exits if out to be so.
-#   usage: tsh_information [-n] <error-type> <error-message> [<exit-flag>]
+# tsh_message: print message and exits if out to be so.
+#   usage: tsh_message [-n] <message-type> <message> [<exit-flag>]
 #     -n flag means no line break after output
 #     exit flag should be “fatal” or “non-fatal”, “fatal” means exiting
 #     default value of exit flag depends on error type, “fatal“ and “error” types exits
@@ -172,10 +169,17 @@ COLOR_DISABLE='false'
 #       error — means error that can be ignored but behviour of t.sh is undefined since it
 #       warning — means error that can be ignored in most cases, otherwise t.sh will generate stronger error later
 #       notice — means something
-#       information — means something about t.sh work
+#       message — general output message
 #       debug — means information that was used for debugging. This should not appear in final version of t.sh
 #     theese types are displayed with different colors ^_~
-function tsh_information()
+typeset -A MESSAGE_COLOR
+MESSAGE_COLOR['fatal']="$COLOR_RED"
+MESSAGE_COLOR['error']="$COLOR_RED"
+MESSAGE_COLOR['warning']="$COLOR_YELLOW"
+MESSAGE_COLOR['notice']="$COLOR_GREEN"
+MESSAGE_COLOR['message']="$COLOR_CYAN"
+MESSAGE_COLOR['debug']="$COLOR_WHITE"
+function tsh_message()
 {
   lineBreak="true"
   if [ "$1" == "-n" ]; then
@@ -183,44 +187,24 @@ function tsh_information()
     shift
   fi
   errorType="$1"
-  case "$errorType" in
-    ("fatal")
-        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-        exitFlag="fatal"
-    ;;
-    ("error")
-        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-        exitFlag="fatal"
-    ;;
-    ("warning")
-        echo_colored $COLOR_YELLOW "[$scriptName, $errorType]" "$2"
-        exitFlag="non-fatal"
-    ;;
-    ("notice")
-        echo_colored $COLOR_GREEN "[$scriptName, $errorType]" "$2"
-        exitFlag="non-fatal"
-    ;;
-    ("information")
-        echo_colored $COLOR_CYAN "[$scriptName, $errorType]" "$2"
-        exitFlag="non-fatal"
-    ;;
-    ("debug")
-        echo_colored $COLOR_WHITE "[$scriptName, $errorType]" "$2"
-        exitFlag="non-fatal"
-    ;;
-    (*)
-        echo_colored $COLOR_RED "[$scriptName, internal error]" "unknown error type, below error is shown"
-        echo_colored $COLOR_RED "[$scriptName, $errorType]" "$2"
-        exitFlag="non-fatal"
-    ;;
-  esac
+  text="$(echo_colored "${MESSAGE_COLOR[$1]}" "[$scriptName, $errorType]" "$2")"
+  if [ "$lineBreak" == 'false' ]; then
+    echo -n "$text"
+  else
+    echo "$text"
+  fi
+  if [ "$1" == 'warning' ] || [ "$1" == 'notice' ] || [ "$1" == 'message' ] || [ "$1" == 'debug' ]; then
+    exitFlag='non-fatal'
+  else
+    exitFlag='fatal'
+  fi
   if [ ${#*} == 3 ]; then
     exitFlag="$3"
   fi
   case "$exitFlag" in
-    "fatal") exit 239;;
-    "non-fatal") return;;
-    *) echo_colored $COLOR_RED "[$scriptName, internal error]" "incorrect exit flag “$exitFlag”";;
+    ('fatal') exit 239;;
+    ('non-fatal') return;;
+    (*) echo_colored $COLOR_RED "[$scriptName, internal error]" "incorrect exit flag “$exitFlag”";;
   esac
 }
 
@@ -255,7 +239,7 @@ function find_problem()
   result=()
   directory="$1"
   if [ ! -d "${directory}" ]; then
-    tsh_information "error" "[recursive_problem] directory “$directory” doesn't looks like directory"
+    tsh_message "error" "[recursive_problem] directory “$directory” doesn't looks like directory"
     return
   fi
   find_recursive "$directory"
@@ -328,7 +312,7 @@ function source_compile()
     ('pl') suffix=".pl" ;;
     ('py') suffix=".py" ;;
     ('sh') suffix=".sh" ;;
-    (*) tsh_information "error" "unknown language (“$language”)";;
+    (*) tsh_message "error" "unknown language (“$language”)";;
   esac
   if [ ${#*} -lt 3 ]; then
     targetFile="$(echo "$sourceFile" | sed -e 's/\.[^.]*$//')$suffix"
@@ -337,7 +321,7 @@ function source_compile()
   fi
   result="$targetFile"
   if [ ! "$sourceFile" -nt "$targetFile" ]; then
-    tsh_information "information" "compile($sourceFile) skipped"
+    tsh_message "message" "compile($sourceFile) skipped"
     return;
   fi
   case "$language" in
@@ -350,10 +334,10 @@ function source_compile()
     ("pl") compileCommand="true" ;;
     ("py") compileCommand="true" ;;
     ("sh") compileCommand="true" ;;
-    (*) tsh_information "error" "unknown language (“$language”)";;
+    (*) tsh_message "error" "unknown language (“$language”)";;
   esac
-  tsh_information "information" "$compileCommand"
-  $compileCommand || tsh_information "error" "compile failed"
+  tsh_message "message" "$compileCommand"
+  $compileCommand || tsh_message "error" "compile failed"
 }
 
 # source_run — function for running program using one of standart schemes
@@ -382,9 +366,10 @@ function source_run()
     ;;
     "pas") runCommand="./$binaryFile ${*:5}" ;;
     "pl") runCommand="perl $binaryFile ${*:5}" ;;
-    "py") runCommand="python $binaryFile ${*:5}" ;;
+    #"py") runCommand="python $binaryFile ${*:5}" ;;
+    "py") runCommand="./$binaryFile ${*:5}" ;;
     "sh") runCommand="bash $binaryFile ${*:5}" ;;
-    *) tsh_information "error" "unknown language (“$language”)" ;;
+    *) tsh_message "error" "unknown language (“$language”)" ;;
   esac
   if [ "$inputFile" == "" ]; then
     if [ "$outputFile" == "" ]; then
@@ -430,18 +415,18 @@ function do_check()
     fi
   done
   if [ "$checkerName" == "" ]; then
-    tsh_information "warning" "checker not found, solution wouldn't be checked"
+    tsh_message "warning" "checker not found, solution wouldn't be checked"
     return 1
   fi
   source_compile "$checkerName" "$checkerLanguage"
   checkerBinary="$result"
-  tsh_information "information" "checking solution"
+  tsh_message "message" "checking solution"
   checkerError='error'
   if [ "$arg_AllowWA" == 'true' ]; then
     checkerError='warning'
   fi
   for testNumber in ${tests[*]}; do
-    tsh_information -n "information" "test [$testNumber] "
+    tsh_message -n "message" "test [$testNumber] "
     cp "$testNumber" "$pInputFileName"
     if [ "$pInputFile" == "<stdin>" ]; then
       inputFile="$pInputFileName";
@@ -453,11 +438,14 @@ function do_check()
     else
       outputFile=""
     fi
-    source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_information "error" "solution failed on test [$testNumber]"
-    source_run "$checkerBinary" "$checkerLanguage" "" "" "$testNumber" "$pOutputFileName" "$testNumber.a" || tsh_information "$checkerError" "check failed on test [$testNumber]"
+    source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_message "error" "solution failed on test [$testNumber]"
+    source_run "$checkerBinary" "$checkerLanguage" "" "" "$testNumber" "$pOutputFileName" "$testNumber.a" || tsh_message "$checkerError" "check failed on test [$testNumber]"
   done
   rm --force "$problemName."{in,out}
 }
+
+# ...
+
 
 # ...
 
@@ -488,6 +476,9 @@ function readProblemProperties()
 
 # t.sh commands
 
+
+# t.sh commands
+
 t_build()
 {
   find_problem "`pwd`"
@@ -495,15 +486,15 @@ t_build()
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     problemName="`echo "$problemDirectory" | sed -e 's/^.*[\/.]\([^\/.]*\)$/\1/'`"
-    tsh_information "information" "=== working with problem “$problemName” ==="
+    tsh_message "message" "=== working with problem “$problemName” ==="
     readProblemProperties
-    tsh_information "information" " * directory: $problemDirectory"
-    tsh_information "information" " * input: $pInputFile"
-    tsh_information "information" " * output: $pOutputFile"
+    tsh_message "message" " * directory: $problemDirectory"
+    tsh_message "message" " * input: $pInputFile"
+    tsh_message "message" " * output: $pOutputFile"
     if [ "$pSolution" == "" ]; then
-      tsh_information "warning" " * solution isn't defined"
+      tsh_message "warning" " * solution isn't defined"
     else
-      tsh_information "information" " * solution: $pSolution"
+      tsh_message "message" " * solution: $pSolution"
     fi
     pSolutionSuffix=""
     if [ "$pSolution" != "" ]; then
@@ -526,9 +517,9 @@ t_build()
     pushd "$sourceDirectory" > /dev/null 2>&1
     # clean:
     if [ -d $testsDirectory ]; then
-      rm --force "$testsDirectory"/[0-9][0-9]{,[0-9]}{,.a} || tsh_information "fatal" "rm failed"
+      rm --force "$testsDirectory"/[0-9][0-9]{,[0-9]}{,.a} || tsh_message "fatal" "rm failed"
     else
-      mkdir "$testsDirectory" || tsh_information "fatal" "mkdir failed"
+      mkdir "$testsDirectory" || tsh_message "fatal" "mkdir failed"
     fi
 
     # run scripts:
@@ -536,7 +527,7 @@ t_build()
       doSuffix="$result"
       source_compile "doall.$doSuffix" "$doSuffix"
       doBinary="$result"
-      source_run "$doBinary" "$doSuffix" "" ""  || tsh_information "error" "doall.sh failed"
+      source_run "$doBinary" "$doSuffix" "" ""  || tsh_message "error" "doall.sh failed"
     else
       counterHand="0";
       counterDo="0";
@@ -563,64 +554,65 @@ t_build()
         fi
       done
       if ! [ "$counterHand" == "0" ]; then
-        tsh_information "information" "manual tests copied: $counterHand"
+        tsh_message "message" "manual tests copied: $counterHand"
       fi
       if ! [ "$counterDo" == "0" ]; then
-        tsh_information "information" "generated tests: $counterDo"
+        tsh_message "message" "generated tests: $counterDo"
       fi
     fi
     popd > /dev/null
-    pushd "${problemDirectory}/tests" > /dev/null 2> /dev/null || tsh_information "error" "directory “tests” was not created by doall" "fatal"
+    pushd "${problemDirectory}/tests" > /dev/null 2> /dev/null || tsh_message "error" "directory “tests” was not created by doall" "fatal"
     find_tests
     tests=(${result[*]})
     if [ "${#tests[*]}" == "0" ]; then
-      tsh_information "error" "there are no tests" "non-fatal"
+      tsh_message "error" "there are no tests" "non-fatal"
       popd > /dev/null
       continue
     fi
-    tsh_information "information" "found tests: ${#tests[*]}"
-    tsh_information -n "information" "converting tests"
+    tsh_message "message" "found tests: ${#tests[*]}"
+    tsh_message -n "message" "converting tests"
     for testNumber in ${tests[*]}; do
       echo -n '.'
       case "$OPERATION_SYSTEM" in
         ('Linux')
-          dos2unix "$testNumber" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}” failed"
+          dos2unix "$testNumber" 2> /dev/null || tsh_message 'warning' "“dos2unix ${testNumber}” failed"
           if [ -e "$testNumber.a" ] ; then
-            dos2unix "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“dos2unix ${testNumber}.a” failed"
+            dos2unix "$testNumber.a" 2> /dev/null || tsh_message 'warning' "“dos2unix ${testNumber}.a” failed"
           fi ;;
         (*)
-          unix2dos "$testNumber" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}” failed"
+          unix2dos "$testNumber" 2> /dev/null || tsh_message 'warning' "“unix2dos ${testNumber}” failed"
           if [ -e "$testNumber.a" ] ; then
-            unix2dos "$testNumber.a" 2> /dev/null || tsh_information 'warning' "“unix2dos ${testNumber}.a” failed"
+            unix2dos "$testNumber.a" 2> /dev/null || tsh_message 'warning' "“unix2dos ${testNumber}.a” failed"
           fi ;;
       esac
     done
     echo 'ok'
     validatorName=""
     validatorLanguage=""
-    validatorBinary=""
+#    validatorBinary=""
     for i in '../source/validator' '../source/validate' '../src/validator' '../src/validate' 'validator' 'validate'; do
       if find_source "$i"; then
         validatorName="$i.$result"
         validatorLanguage="$result"
-        validatorBinary="$i"
+#        validatorBinary="$i"
         break;
       fi
     done
     if [ "$validatorName" == "" ]; then
-      tsh_information "warning" "validator not found, tests wouldn't be validated"
+      tsh_message "warning" "validator not found, tests wouldn't be validated"
     else
-      source_compile "$validatorName" "$validatorLanguage" "$validatorBinary"
+      source_compile "$validatorName" "$validatorLanguage"
+      # "$validatorBinary"
       validatorBinary="$result"
-      tsh_information -n "information" "validating tests"
+      tsh_message -n "message" "validating tests"
       for testNumber in ${tests[*]}; do
         echo -n "."
-        source_run "$validatorBinary" "$validatorLanguage" "$testNumber" || tsh_information "error" "test [$testNumber] failed validation"
+        source_run "$validatorBinary" "$validatorLanguage" "$testNumber" || tsh_message "error" "test [$testNumber] failed validation"
       done
       echo "ok"
     fi
     if ! find_solution "../" "$pSolutionSuffix" "$problemName"; then
-      tsh_information "warning" "solution not found, answers wouldn't be generated"
+      tsh_message "warning" "solution not found, answers wouldn't be generated"
       popd > /dev/null
       continue
     fi
@@ -628,7 +620,7 @@ t_build()
     solutionLanguage="`echo "$solutionName" | sed -e 's/^.*\.\([^.]*\)$/\1/'`"
     source_compile "../$solutionName" "$solutionLanguage"
     solutionBinary="$result"
-    tsh_information -n "information" "generate answers"
+    tsh_message -n "message" "generate answers"
     for testNumber in ${tests[*]}; do
       if [ -f "$testNumber.a" ]; then
         echo -n "+"
@@ -647,7 +639,7 @@ t_build()
       else
         outputFile=""
       fi
-      source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_information "error" "solution failed on test [$testNumber]"
+      source_run "$solutionBinary" "$solutionLanguage" "$inputFile" "$outputFile" || tsh_message "error" "solution failed on test [$testNumber]"
       cp "$pOutputFileName" "$testNumber.a"
     done
     echo "ok"
@@ -657,11 +649,12 @@ t_build()
   done
 }
 
+
 clean_binary()
 {
   for i in "$1"/*; do
     if [ -f "$i.cpp" ] || [ -f "$i.c++" ] || [ -f "$i.c" ] || [ -f "$i.dpr" ] || [ -f "$i.pas" ] || [ -f "$i.PAS" ]; then
-      tsh_information "information" "removed: $i"
+      tsh_message "message" "removed: $i"
       rm --force "$i"
     fi
   done
@@ -674,12 +667,12 @@ t_check()
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     problemName="`echo "$problemDirectory" | sed -e 's/^.*[\/.]\([^\/]*\)$/\1/'`"
-    tsh_information "information" "=== working with problem “$problemName” ==="
+    tsh_message "message" "=== working with problem “$problemName” ==="
     readProblemProperties
     pushd "$problemDirectory/tests" > /dev/null
     solutionSuffix="${tParameters[1]}"
     if ! find_solution "../" "$solutionSuffix" "$problemName"; then
-      tsh_information "warning" "solution not found: “$solutionSuffix”"
+      tsh_message "warning" "solution not found: “$solutionSuffix”"
       popd > /dev/null
       continue
     fi
@@ -709,7 +702,7 @@ t_clean()
       if ! [ -d "$i" ]; then
         continue;
       fi
-      rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest}
+      rm --force "$i"/*.{in,out,log,exe,dcu,ppu,o,obj,class,hi,manifest,pyc,pyo}
       clean_binary "$i"
     done
     # try to invoke custom clear scripts
@@ -718,16 +711,17 @@ t_clean()
         continue
       fi
       pushd "$i" > /dev/null
-      [ -f wipe.py ] && (python wipe.py || tsh_information 'error' "wipe.py failed")
+      [ -f wipe.py ] && (python wipe.py || tsh_message 'error' "wipe.py failed")
       popd > /dev/null
     done
     # remove tests directory sometimes
     if ( [ -d "src" ] || [ -d "source" ] ) && [ "$arg_NoRemoveTests" != 'true' ] && [ -d "tests" ] ; then
-      rmdir "tests" || tsh_information "warning" "directory “tests” could not be cleaned up while directory “src” exists"
+      rmdir "tests" || tsh_message "warning" "directory “tests” could not be cleaned up while directory “src” exists"
     fi
     popd > /dev/null
   done
 }
+
 
 t_help()
 {
@@ -768,4 +762,3 @@ case "$tCommand" in
   (*) echo "$scriptName: $tCommand: unknown command"
       echo "try “$scriptName help”" ;;
 esac
-

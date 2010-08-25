@@ -111,19 +111,20 @@ t_build()
     echo 'ok'
     validatorName=""
     validatorLanguage=""
-    validatorBinary=""
+#    validatorBinary=""
     for i in '../source/validator' '../source/validate' '../src/validator' '../src/validate' 'validator' 'validate'; do
       if find_source "$i"; then
         validatorName="$i.$result"
         validatorLanguage="$result"
-        validatorBinary="$i"
+#        validatorBinary="$i"
         break;
       fi
     done
     if [ "$validatorName" == "" ]; then
       tsh_message "warning" "validator not found, tests wouldn't be validated"
     else
-      source_compile "$validatorName" "$validatorLanguage" "$validatorBinary"
+      source_compile "$validatorName" "$validatorLanguage"
+      # "$validatorBinary"
       validatorBinary="$result"
       tsh_message -n "message" "validating tests"
       for testNumber in ${tests[*]}; do
