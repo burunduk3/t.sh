@@ -256,7 +256,7 @@ function find_problem()
 #   if found also returns suffix in “result” global variable
 function find_source()
 {
-  for test_source_i in c cpp dpr java pas pl py sh; do
+  for test_source_i in c cpp c++ dpr java pas pl py sh; do
     if [ -f "$1.$test_source_i" ]; then
       result="$test_source_i"
       return 0
