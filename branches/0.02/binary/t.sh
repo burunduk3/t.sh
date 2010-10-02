@@ -349,7 +349,7 @@ function source_compile()
       classPath="`echo "./$sourceFile" | sed -e 's/\/[^\/]*$//'`"
       className="`echo "./$sourceFile" | sed -e 's/^.*\/\([^\/]*\)\.java$/\1/'`"
       targetFile="$(echo "$sourceFile" | sed -e 's/\.java$/.class/')"
-      compileCommand="javac $JAVAFLAGS '$sourceFile'"
+      compileCommand="javac '$sourceFile'"
       echo "java $JAVAFLAGS -cp '$classPath' '$className'"
     ;;
     ('pascal')
