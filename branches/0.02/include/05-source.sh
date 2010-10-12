@@ -34,7 +34,7 @@ function source_compile()
     ;;
     ('delphi')
       targetFile="${3:-$(echo "$sourceFile" | sed -e 's/\.dpr$/'$BINARY_SUFFIX'/')}"
-      compileCommand="fpc -Mdeplhi $FPCFLAGS -o'$targetFile' '$sourceFile'"
+      compileCommand="fpc -Mdelphi $FPCFLAGS -o'$targetFile' '$sourceFile'"
       echo "'./$targetFile'"
     ;;
     ('java')

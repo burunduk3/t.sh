@@ -30,7 +30,8 @@ function do_check()
     return 1
   fi
   checker="$(source_compile "$checkerName" "$checkerLanguage")"
-  tsh_message "message" "checking solution"
+  #tsh_message 'debug' "checker: “$checker”"
+  tsh_message 'message' "checking solution"
   checkerError='error'
   if [ "$arg_AllowWA" == 'true' ]; then
     checkerError='warning'
