@@ -1,4 +1,28 @@
 
+# utilitary
+
+tsh_util_dos2unix()
+{
+  if dos2unix "$1" 2> /dev/null ; then
+    return 0
+  fi
+  if dos2unix "$1" "$1.tmp-dos2unix" && mv "$1.tmp-dos2unix" "$1" ; then
+    return 0
+  fi
+  return 1
+}
+
+tsh_util_unix2dos()
+{
+  if unix2dos "$1" 2> /dev/null ; then
+    return 0
+  fi
+  if unix2dos "$1" "$1.tmp-unix2dos" && mv "$1.tmp-unix2dos" "$1" ; then
+    return 0
+  fi
+  return 1
+}
+
 # t.sh commands
 
 t_build()
@@ -97,14 +121,14 @@ t_build()
       echo -n '.'
       case "$OPERATION_SYSTEM" in
         ('Linux')
-          dos2unix "$testNumber" 2> /dev/null || tsh_message 'warning' "“dos2unix ${testNumber}” failed"
+          tsh_util_dos2unix "$testNumber" || tsh_message 'warning' "“dos2unix ${testNumber}” failed"
           if [ -e "$testNumber.a" ] ; then
-            dos2unix "$testNumber.a" 2> /dev/null || tsh_message 'warning' "“dos2unix ${testNumber}.a” failed"
+            tsh_util_dos2unix "$testNumber.a" || tsh_message 'warning' "“dos2unix ${testNumber}.a” failed"
           fi ;;
         (*)
-          unix2dos "$testNumber" 2> /dev/null || tsh_message 'warning' "“unix2dos ${testNumber}” failed"
+          tsh_util_unix2dos "$testNumber" || tsh_message 'warning' "“unix2dos ${testNumber}” failed"
           if [ -e "$testNumber.a" ] ; then
-            unix2dos "$testNumber.a" 2> /dev/null || tsh_message 'warning' "“unix2dos ${testNumber}.a” failed"
+            tsh_util_unix2dos "$testNumber.a" || tsh_message 'warning' "“unix2dos ${testNumber}.a” failed"
           fi ;;
       esac
     done
