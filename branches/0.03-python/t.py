@@ -41,64 +41,18 @@ class Executable:
     process.communicate()
     return process.returncode == 0
 
+
+# Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
+
 def create_compile_default( compiler ):
   def compile_doit( source, binary, skip ):
     nonlocal compiler
     if not skip:
       compile = subprocess.Popen(compiler(source, binary))
       compile.communicate()
-      if compile.returncode != 0: return none
+      if compile.returncode != 0: return None
     return Executable(binary)
   return compile_doit
-
-def binary_default( path ):
-  return os.path.splitext(path)[0]# + '.exe' for m$
-
-def binary_java( path ):
-  return os.path.splitext(path)[0] + '.class'
-
-compile_c = create_compile_default(lambda source,binary: ['gcc', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c', '-o', binary, source])
-compile_cpp = create_compile_default(lambda source,binary: ['g++', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c++', '-o', binary, source])
-compile_delphi = create_compile_default(lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd',
-    '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source])
-compile_pascal = create_compile_default(lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source])
-
-#def compile_c( source, binary, skip ):
-#  if not skip:
-#    compile = subprocess.Popen(['gcc', '-O2', '-Wall', '-Wextra', '-I', '../../../include/', '-D__T_SH__', '-x', 'c', '-o', binary, source])
-#    compile.communicate()
-#    if compile.returncode != 0: return None
-#  return Executable(binary)
-
-#def compile_cpp( source, binary, skip ):
-#  if not skip:
-#    compile = subprocess.Popen(['g++', '-O2', '-Wall', '-Wextra', '-I', '../../../include/', '-D__T_SH__', '-x', 'c++', '-o', binary, source])
-#    compile.communicate()
-#    if compile.returncode != 0: return None
-#  return Executable(binary)
-
-#def compile_delphi( source, binary, skip ):
-#  if not skip:
-#    compile = subprocess.Popen(['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include/', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source])
-#    compile.communicate()
-#    if compile.returncode != 0: return None
-#  return Executable(binary)
-
-def compile_java( source, binary, skip ):
-  if not skip:
-    compile = subprocess.Popen(['javac', source])
-    compile.communicate()
-    if compile.returncode != 0: return None
-  classpath = os.path.dirname(binary)
-  classname = os.path.splitext(os.path.basename(binary))[0]
-  return Executable(binary, ['java', '-Xmx256M', '-Xss128M', '-cp', classpath, classname], add=False)
-
-#def compile_pascal( source, binary, skip ):
-#  if not skip:
-#    compile = subprocess.Popen(['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include/', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source])
-#    compile.communicate()
-#    if compile.returncode != 0: return None
-#  return Executable(binary)
 
 def create_compile_none( command ):
   def compile_none( source, binary, skip ):
@@ -106,26 +60,38 @@ def create_compile_none( command ):
     return Executable(source, command)
   return compile_none
 
+binary_default = lambda path: os.path.splitext(path)[0]# + '.exe' for m$
+
+def compile_java( source, binary, skip ):
+  if not skip:
+    compile = subprocess.Popen(['javac', source])
+    compile.communicate()
+    if compile.returncode != 0: return None
+  return Executable(binary, ['java', '-Xmx256M', '-Xss128M', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
+
 def compile_python( source, binary, skip ):
   shabang = open(source, 'r').readline()
   if shabang[0:2] != '#!': shabang = ''
-  command = 'python'
-  for i in ['python3', 'python2']:
-    if i in shabang:
-      command = i
-      break
+  if 'python3' in shabang: command = 'python3'
+  elif 'python2' in shaband: command = 'python2'
+  else: command = 'python'
   return Executable(source, [command])
 
-c = Language('c', compile_c, binary_default)
-cpp = Language('c++', compile_cpp, binary_default)
-delphi = Language('delphi', compile_delphi, binary_default)
-java = Language('java', compile_java, binary_java)
-pascal = Language('pascal', compile_pascal, binary_default)
-perl = Language('perl', create_compile_none(['perl']))
-python = Language('python', compile_python)
-bash = Language('bash', create_compile_none(['bash']))
-
-language = {'c': c, 'c++': cpp, 'cpp': cpp, 'cxx': cpp, 'C': cpp, 'dpr': delphi, 'java': java, 'pas': pascal, 'pl': perl, 'py': python, 'sh': bash}
+language = {
+   'c': Language('c', create_compile_default(lambda source,binary:
+       ['gcc', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c', '-o', binary, source]), binary_default),
+   'c++': Language('c++', create_compile_default(lambda source,binary:
+       ['g++', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c++', '-o', binary, source]), binary_default),
+   'dpr': Language('delphi', create_compile_default(lambda source,binary:
+       ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source]), binary_default),
+   'java': Language('java', compile_java, lambda path: os.path.splitext(path)[0] + '.class'),
+   'pas': Language('pascal', create_compile_default(lambda source,binary:
+       ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source]), binary_default),
+   'pl': Language('perl', create_compile_none(['perl'])),
+   'py': Language('python', compile_python),
+   'sh': Language('bash', create_compile_none(['bash']))
+}
+for suffix in ['cpp', 'cxx', 'C']: language[suffix] = language['c++'] # additional c++ suffixes
 suffixes = language.keys()
 
 
