@@ -48,6 +48,7 @@ def create_compile_default( compiler ):
   def compile_doit( source, binary, skip ):
     nonlocal compiler
     if not skip:
+      t = compiler(source, binary)
       compile = subprocess.Popen(compiler(source, binary))
       compile.communicate()
       if compile.returncode != 0: return None
@@ -60,7 +61,10 @@ def create_compile_none( command ):
     return Executable(source, command)
   return compile_none
 
-binary_default = lambda path: os.path.splitext(path)[0]# + '.exe' for m$
+def binary_default( path ):
+  (path, filename) = os.path.split(path)
+  if path == '': path = '.'
+  return os.path.join(path, os.path.splitext(filename)[0])# + '.exe' for m$
 
 def compile_java( source, binary, skip ):
   if not skip:
@@ -136,24 +140,22 @@ class Log:
     self.message = {Log.DEBUG: 'debug', Log.INFO: 'info', Log.NOTICE: 'notice', Log.WARNING: 'warning', Log.ERROR: 'error', Log.FATAL: 'fatal error'}
     pass
   def __call__( self, message, level = INFO, exit=None, end='\n' ):
-    print("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
+    self.write("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
     exit = exit if exit is not None else level >= Log.ERROR
-    sys.stdout.flush()
     if exit: sys.exit(1)
-  def write( self, message ):
-    print(message, end='')
+  def write( self, message, end='' ):
+    print(message, end=end)
     sys.stdout.flush()
 
 
 def find_problems( base = '.' ):
-  queue, result = [base], []
+  queue = [os.path.abspath(base)]
   for path in queue:
     if not os.path.isdir(path): continue;
     if os.path.exists(os.path.join(path, 'tests')) or os.path.exists(os.path.join(path, 'source')) or os.path.exists(os.path.join(path, 'src')):
-      result.append(path)
+      yield path
     else:
-      queue += [os.path.join(path, x) for x in os.listdir(path)]
-  return result
+      queue += [os.path.join(path, x) for x in sorted(os.listdir(path))]
 
 def find_source( path ):
   global suffixes
@@ -190,7 +192,7 @@ class Source:
   def compile( self ):
     global log
     binary, skip = self.binary(), False
-    if binary == self.path:
+    if binary == self.path or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(self.path).st_mtime):
       log('compile skipped: %s' % binary)
       skip = True
     else:
@@ -222,6 +224,19 @@ def read_configuration( path ):
   #configuration.update(configuration_force)
   return configuration
 
+def convert_tests(tests):
+  log('convert tests', end='')
+  for test in tests:
+    log.write('.')
+    p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
+    p.communicate()
+    if p.returncode != 0: log('dos2unix failed on test %s' % test, Log.WARNING)
+    if not os.path.isfile(test + '.a'):
+      continue
+    p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
+    p.communicate()
+    if p.returncode != 0: log('dos2unix failed on file %s.a' % test, Log.WARNING)
+  log.write('done\n')
 
 def build_problem( configuration ):
   global log
@@ -264,7 +279,7 @@ def build_problem( configuration ):
         generator = find_source('do' + test)
         generator = find_source('gen' + test) if generator is None else generator
         if generator is None: continue
-        result = Source(generator).compile()()
+        result = Source(generator).compile()(stdout=open(target, 'w'))
         if not result: log('generator (%s) failed' % generator, Log.ERROR)
         count_gen += 1
     if count_hand != 0: log('manual tests copied: %d' % count_hand)
@@ -273,18 +288,7 @@ def build_problem( configuration ):
   if len(tests) == 0: log('no tests found in %s' % configuration['tests-directory'], Log.ERROR)
   log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
   os.chdir(configuration['tests-directory'])
-  log('convert tests', end='')
-  for test in tests:
-    log.write('.')
-    p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
-    p.communicate()
-    if p.returncode != 0: log('dos2unix failed on test %s' % test, Log.WARNING)
-    if not os.path.isfile(test + '.a'):
-      continue
-    p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
-    p.communicate()
-    if p.returncode != 0: log('dos2unix failed on file %s.a' % test, Log.WARNING)
-  log.write('done\n')
+  convert_tests(tests)
   validator = None
   for name in ['validate', 'validator']:
     validator = find_source(os.path.join(configuration['source-directory'], name))
@@ -361,9 +365,10 @@ def check_problem( configuration, solution=None ):
 
 
 def clean_problem( path ):
-  global suffixes
+  global suffixes, options
   os.chdir(path)
-  if os.path.isdir('tests'):
+  remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
+  if remove_tests and os.path.isdir('tests'):
     for filename in os.listdir('tests'):
       if not re.match('^\d{2,3}(.a)?$', filename): continue
       os.remove(os.path.join('tests', filename))
@@ -377,44 +382,100 @@ def clean_problem( path ):
         if not os.path.isfile(os.path.join(directory, filename + '.' + suffix)): continue
         os.remove(os.path.join(directory, filename))
         break
-    cleaner_name = find_source(os.path.join(directory, 'wipe'))
-    if cleaner_name is None: continue
-    cleaner = Source(cleaner_name).compile()
-    if cleaner is None:
-      log('Compilation failed: %s.' % cleaner_name, Log.WARNING)
-      continue
-    result = cleaner()
-    if not result:
-      log('%s returned non-zero' % cleaner, Log.WARNING)
-  if (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
+    if remove_tests:
+      cleaner_name = find_source(os.path.join(directory, 'wipe'))
+      if cleaner_name is None: continue
+      cleaner = Source(cleaner_name).compile()
+      if cleaner is None:
+        log('Compilation failed: %s.' % cleaner_name, Log.WARNING)
+        continue
+      result = cleaner()
+      if not result:
+        log('%s returned non-zero' % cleaner, Log.WARNING)
+  if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
     os.rmdir('tests')
-
-
 
 log = Log()
 log('t.py isn\'t finished yet, only basic features are availible', Log.WARNING)
 
-arguments = []
-for arg in sys.argv[1:]:
-  if arg[0] == '-':
+if sys.platform == 'win32': # if os is outdated
+  # Это выглядит как грязный хак, каковым и является.
+  import ctypes
+
+  STD_INPUT_HANDLE = -10
+  STD_OUTPUT_HANDLE= -11
+  STD_ERROR_HANDLE = -12
+
+  FOREGROUND_BLUE = 0x01
+  FOREGROUND_GREEN= 0x02
+  FOREGROUND_RED  = 0x04
+  FOREGROUND_INTENSITY = 0x08
+  BACKGROUND_BLUE = 0x10
+  BACKGROUND_GREEN= 0x20
+  BACKGROUND_RED  = 0x40
+  BACKGROUND_INTENSITY = 0x80
+  windows_colors = [
+    0, # black
+    FOREGROUND_RED, # red
+    FOREGROUND_GREEN, #green
+    FOREGROUND_GREEN|FOREGROUND_RED, # brown
+    FOREGROUND_BLUE, # blue
+    FOREGROUND_BLUE|FOREGROUND_RED, # magenta
+    FOREGROUND_BLUE|FOREGROUND_GREEN, # skyblue
+    FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED, # gray
+    0,0,0
+  ]
+  def windows_write( text ):
+    handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+    pieces = test.split('\x1b[')
+    sys.stdout.write(pieces[0])
+    sys.stdout.flush()
+    for str in pieces[1:]:
+      color, line = str.split('m', 1)
+      numbers = [int(x) for x in color.split(';')]
+      mask = 0
+      for x in numbers:
+        if x == 1: mask |= FOREGROUND_INTENSITY
+        if 30 <= x <= 39: mask |= windows_colors[x - 30]
+      ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
+      sys.stdout.write(line)
+      sys.stdout.flush()
+  def windows_convert_tests( tests ):
     pass
+  log.write = windows_write
+  convert_tests = windows_convert_tests
+
+arguments, arguments_force = [], False
+options = {}
+for arg in sys.argv[1:]:
+  if len(arg) >= 1 and arg[0] == '-' and not arguments_force:
+    if len(arg) >= 2 and arg[1] == '-':
+      if arg == '--': arguments_force = True
+      elif arg == '--no-remove-tests': options['no-remove-tests'] = True
+      else:
+        pass
+    else:
+      for option in arg[1:]:
+        if option == 't': options['no-remove-tests'] = True
+        else:
+          pass
   else:
     arguments.append(arg)
 command = arguments[0] if len(arguments) > 0 else None
 
 if command == 'build':
-  for problem in find_problems('.'):
-    configuration = read_configuration(os.path.abspath(problem))
+  for problem in find_problems():
+    configuration = read_configuration(problem)
     build_problem(configuration)
     check_problem(configuration)
 elif command == 'check':
-  for problem in find_problems('.'):
-    configuration = read_configuration(os.path.abspath(problem))
+  for problem in find_problems():
+    configuration = read_configuration(problem)
     if len(arguments) > 1:
       configuration['solution'] = arguments[1]
     check_problem(configuration)
 elif command == 'clean':
-  for problem in find_problems('.'):
-    clean_problem(os.path.abspath(problem))
+  for problem in find_problems():
+    clean_problem(problem)
 
 
