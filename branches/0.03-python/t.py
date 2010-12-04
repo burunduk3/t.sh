@@ -369,7 +369,7 @@ def check_problem( configuration, solution=None ):
     if not r: log.error('Solution failed on test %s.' % test)
     result = checker(arguments=[input_name, output_name, test + '.a'])
     if not result: log.error('Wrong answer on test %s.' % test)
-    return True
+  return True
 
 
 def clean_problem( path ):
