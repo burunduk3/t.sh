@@ -371,7 +371,6 @@ def check_problem( configuration, solution=None ):
     if not result: log.error('Wrong answer on test %s.' % test)
   return True
 
-
 def clean_problem( path ):
   global suffixes, options
   os.chdir(path)
@@ -402,6 +401,10 @@ def clean_problem( path ):
         log.warning('%s returned non-zero' % cleaner)
   if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
     os.rmdir('tests')
+
+def prepare():
+  import resource
+  resource.setrlimit(resource.RLIMIT_STACK, (-1, -1))
 
 log = Log()
 
@@ -451,9 +454,13 @@ if sys.platform == 'win32': # if os is outdated
       sys.stdout.flush()
   def windows_convert_tests( tests ):
     pass
+  def windows_prepare():
+    pass
   log.write = windows_write
   convert_tests = windows_convert_tests
+  prepare = windows_prepare
 
+prepare()
 log.warning('t.py isn\'t finished yet, only basic features are availible')
 
 arguments, arguments_force = [], False
