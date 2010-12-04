@@ -139,6 +139,12 @@ class Log:
   def __init__( self ):
     self.color = {Log.DEBUG: 37, Log.INFO: 36, Log.NOTICE: 32, Log.WARNING: 33, Log.ERROR: 31, Log.FATAL: 31}
     self.message = {Log.DEBUG: 'debug', Log.INFO: 'info', Log.NOTICE: 'notice', Log.WARNING: 'warning', Log.ERROR: 'error', Log.FATAL: 'fatal error'}
+    self.debug = lambda text: self(text, Log.DEBUG)
+    self.info = lambda text: self(text, Log.INFO)
+    self.notice = lambda text: self(text, Log.NOTICE)
+    self.warning = lambda text: self(text, Log.WARNING)
+    self.error = lambda text: self(text, Log.ERROR)
+    self.fatal = lambda text: self(text, Log.FATAL)
     pass
   def __call__( self, message, level = INFO, exit=None, end='\n' ):
     self.write("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
@@ -231,12 +237,12 @@ def convert_tests( tests ):
     log.write('.')
     p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
     p.communicate()
-    if p.returncode != 0: log('dos2unix failed on test %s' % test, Log.WARNING)
+    if p.returncode != 0: log.warning('dos2unix failed on test %s' % test)
     if not os.path.isfile(test + '.a'):
       continue
     p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
     p.communicate()
-    if p.returncode != 0: log('dos2unix failed on file %s.a' % test, Log.WARNING)
+    if p.returncode != 0: log.warning('dos2unix failed on file %s.a' % test)
   log.write('done\n')
 
 def build_problem( configuration ):
@@ -248,8 +254,8 @@ def build_problem( configuration ):
   for key in sorted(configuration.keys()):
     name = config_names[key] if key in config_names else ('“%s”' % key)
     log('  * %s: %s' % (name, configuration[key]))
-  if 'solution' not in configuration: log('No solution defined for problem %s.' % problem_name, Log.WARNING)
-  if 'source-directory' not in configuration: log('No source directory defined for problem %s.' % problem_name, Log.ERROR)
+  if 'solution' not in configuration: log.warning('No solution defined for problem %s.' % problem_name)
+  if 'source-directory' not in configuration: log.error('No source directory defined for problem %s.' % problem_name)
   os.chdir(path)
   # cleanup
   if os.path.isdir(configuration['tests-directory']):
@@ -264,7 +270,7 @@ def build_problem( configuration ):
   if doall is not None:
     log('using generator: %s' % doall)
     result = Source(doall).compile()()
-    if not result: log('generator failed', Log.ERROR)
+    if not result: log.error('generator failed')
   else:
     log('auto-generating tests')
     count_hand, count_gen = 0, 0
@@ -281,12 +287,12 @@ def build_problem( configuration ):
         generator = find_source('gen' + test) if generator is None else generator
         if generator is None: continue
         result = Source(generator).compile()(stdout=open(target, 'w'))
-        if not result: log('generator (%s) failed' % generator, Log.ERROR)
+        if not result: log.error('generator (%s) failed' % generator)
         count_gen += 1
     if count_hand != 0: log('manual tests copied: %d' % count_hand)
     if count_gen != 0: log('generated tests: %d' % count_gen)
   tests = list(find_tests(configuration['tests-directory']))
-  if not tests: log('no tests found in %s' % configuration['tests-directory'], Log.ERROR)
+  if not tests: log.error('no tests found in %s' % configuration['tests-directory'])
   log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
   os.chdir(configuration['tests-directory'])
   convert_tests(tests)
@@ -300,11 +306,11 @@ def build_problem( configuration ):
     for test in tests:
       log.write('.')
       if validator(arguments=[test], stdin=open(test, 'r')): continue
-      log('Test %s failed validation.' % test, Log.ERROR)
+      log.error('Test %s failed validation.' % test)
     log.write('done\n')
   solution = find_solution(path, configuration['solution'], problem_name) if 'solution' in configuration else None
   if solution is None:
-    log('Solution not found.', Log.WARNING)
+    log.warning('Solution not found.')
     return False
   #log('path=%s, solution=%s' % (path, solution), Log.DEBUG)
   solution = Source(os.path.join(path, solution)).compile()
@@ -319,7 +325,7 @@ def build_problem( configuration ):
     log.write('.')
     shutil.copy(test, input_name)
     r = solution(stdin=open(input_name, 'r') if configuration['input-file'] == '<stdin>' else None, stdout=open(output_name, 'w') if configuration['output-file'] == '<stdout>' else None)
-    if not r: log('Solution failed on test %s.' % test, Log.ERROR)
+    if not r: log.error('Solution failed on test %s.' % test)
     shutil.copy(output_name, test + '.a')
   log.write('done\n')
   return True
@@ -330,29 +336,29 @@ def check_problem( configuration, solution=None ):
   os.chdir(configuration['tests-directory'])
   tests = list(find_tests(configuration['tests-directory']))
   if not tests:
-    log('No tests found for problem %s.' % problem_name, Log.WARNING)
+    log.warning('No tests found for problem %s.' % problem_name)
     return False
   checker = None
   for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name]:
     checker = find_source(os.path.join('..', checker_name))
     if checker is not None: break
   if checker is None:
-    log('Checker wasn\'t found, solution wouldn\'t be checked.', Log.WARNING)
+    log.warning('Checker wasn\'t found, solution wouldn\'t be checked.')
     return False
   checker = Source(checker).compile()
   if checker is None:
-    log('Checker: compilation error.', Log.WARNING)
+    log.warning('Checker: compilation error.')
     return False
   solution_name = configuration['solution'] if solution is None else solution
   solution = find_solution(configuration['path'], solution_name, problem_name)
   if solution is None:
-    log('Solution (%s) wasn\'t found.' % solution_name, Log.WARNING)
+    log.warning('Solution (%s) wasn\'t found.' % solution_name)
     return False
   solution = Source(solution).compile()
   if solution is None:
-    log('Solution (%s): compilation error.' % solution_name, Log.WARNING)
+    log.warning('Solution (%s): compilation error.' % solution_name)
     return False
-  log('checking solution: %s' % solution, Log.INFO)
+  log.info('checking solution: %s' % solution)
   input_name, output_name = configuration['input-file'], configuration['output-file']
   input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
   output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
@@ -360,10 +366,10 @@ def check_problem( configuration, solution=None ):
     log('test [%s] ' % test, Log.INFO, end='')
     shutil.copy(test, input_name)
     r = solution(stdin=open(input_name, 'r') if configuration['input-file'] == '<stdin>' else None, stdout=open(output_name, 'w') if configuration['output-file'] == '<stdout>' else None)
-    if not r: log('Solution failed on test %s.' % test, Log.ERROR)
+    if not r: log.error('Solution failed on test %s.' % test)
     result = checker(arguments=[input_name, output_name, test + '.a'])
-    if not result: log('Wrong answer on test %s.' % test, Log.ERROR)
-  return True
+    if not result: log.error('Wrong answer on test %s.' % test)
+      return True
 
 
 def clean_problem( path ):
@@ -389,19 +395,18 @@ def clean_problem( path ):
       if cleaner_name is None: continue
       cleaner = Source(cleaner_name).compile()
       if cleaner is None:
-        log('Compilation failed: %s.' % cleaner_name, Log.WARNING)
+        log.warning('Compilation failed: %s.' % cleaner_name)
         continue
       result = cleaner()
       if not result:
-        log('%s returned non-zero' % cleaner, Log.WARNING)
+        log.warning('%s returned non-zero' % cleaner)
   if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
     os.rmdir('tests')
 
 log = Log()
-log('t.py isn\'t finished yet, only basic features are availible', Log.WARNING)
 
 if sys.platform == 'win32': # if os is outdated
-  # Это выглядит как грязный хак, каковым и является.
+  # Это выглядит как мерзкий, грязный хак, каковым является вообще любая работа с windows.
   import ctypes
 
   STD_INPUT_HANDLE = -10
@@ -448,6 +453,8 @@ if sys.platform == 'win32': # if os is outdated
     pass
   log.write = windows_write
   convert_tests = windows_convert_tests
+
+log.warning('t.py isn\'t finished yet, only basic features are availible')
 
 arguments, arguments_force = [], False
 options = {}
