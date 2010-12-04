@@ -77,20 +77,21 @@ def compile_python( source, binary, skip ):
   shabang = open(source, 'r').readline()
   if shabang[0:2] != '#!': shabang = ''
   if 'python3' in shabang: command = 'python3'
-  elif 'python2' in shaband: command = 'python2'
+  elif 'python2' in shabang: command = 'python2'
   else: command = 'python'
   return Executable(source, [command])
 
+include_path = '../../../include'
 language = {
    'c': Language('c', create_compile_default(lambda source,binary:
-       ['gcc', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c', '-o', binary, source]), binary_default),
+       ['gcc', '-O2', '-Wall', '-Wextra', '-I', include_path, '-D__T_SH__', '-x', 'c', '-o', binary, source]), binary_default),
    'c++': Language('c++', create_compile_default(lambda source,binary:
-       ['g++', '-O2', '-Wall', '-Wextra', '-I', '../../../include', '-D__T_SH__', '-x', 'c++', '-o', binary, source]), binary_default),
+       ['g++', '-O2', '-Wall', '-Wextra', '-I', include_path, '-D__T_SH__', '-x', 'c++', '-o', binary, source]), binary_default),
    'dpr': Language('delphi', create_compile_default(lambda source,binary:
-       ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source]), binary_default),
+       ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]), binary_default),
    'java': Language('java', compile_java, lambda path: os.path.splitext(path)[0] + '.class'),
    'pas': Language('pascal', create_compile_default(lambda source,binary:
-       ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu../../../include', '-Fi../../../include', '-d__T_SH__', '-o'+binary, source]), binary_default),
+       ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]), binary_default),
    'pl': Language('perl', create_compile_none(['perl'])),
    'py': Language('python', compile_python),
    'sh': Language('bash', create_compile_none(['bash']))
@@ -167,18 +168,18 @@ def find_source( path ):
   return None
 
 def find_tests( path = '.' ):
-  result = []
   for filename in sorted(os.listdir(path)):
     if not re.match('^\d{2,3}$', filename): continue
     if not os.path.isfile(os.path.join(path, filename)): continue
-    result.append(filename)
-  return result
+    yield filename
 
 def find_solution( path, token, problem ):
   result = find_source(os.path.join(path, token))
   if result is not None: return result
   result = find_source(os.path.join(path, problem + '_' + token))
   if result is not None: return result
+  # В t.sh был ещё один случай: когда мы выбираем файл c именем <problem>_<token>, но не делаем find_source.
+  # Я пока не буду это здесь повторять, потому что не могу придумать случай, когда это нужно.
   return None
 
 class Source:
@@ -224,7 +225,7 @@ def read_configuration( path ):
   #configuration.update(configuration_force)
   return configuration
 
-def convert_tests(tests):
+def convert_tests( tests ):
   log('convert tests', end='')
   for test in tests:
     log.write('.')
@@ -284,8 +285,8 @@ def build_problem( configuration ):
         count_gen += 1
     if count_hand != 0: log('manual tests copied: %d' % count_hand)
     if count_gen != 0: log('generated tests: %d' % count_gen)
-  tests = find_tests(configuration['tests-directory'])
-  if len(tests) == 0: log('no tests found in %s' % configuration['tests-directory'], Log.ERROR)
+  tests = list(find_tests(configuration['tests-directory']))
+  if not tests: log('no tests found in %s' % configuration['tests-directory'], Log.ERROR)
   log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
   os.chdir(configuration['tests-directory'])
   convert_tests(tests)
@@ -305,6 +306,7 @@ def build_problem( configuration ):
   if solution is None:
     log('Solution not found.', Log.WARNING)
     return False
+  #log('path=%s, solution=%s' % (path, solution), Log.DEBUG)
   solution = Source(os.path.join(path, solution)).compile()
   log('generate answers', end='')
   input_name, output_name = configuration['input-file'], configuration['output-file']
@@ -326,9 +328,9 @@ def build_problem( configuration ):
 def check_problem( configuration, solution=None ):
   problem_name = configuration['name']
   os.chdir(configuration['tests-directory'])
-  tests = find_tests(configuration['tests-directory'])
-  if len(tests) == 0:
-    log('No tests found for problem %s.' % problem_name)
+  tests = list(find_tests(configuration['tests-directory']))
+  if not tests:
+    log('No tests found for problem %s.' % problem_name, Log.WARNING)
     return False
   checker = None
   for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name]:
@@ -425,9 +427,10 @@ if sys.platform == 'win32': # if os is outdated
     FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED, # gray
     0,0,0
   ]
-  def windows_write( text ):
+  def windows_write( text, end='' ):
+    text += end
     handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
-    pieces = test.split('\x1b[')
+    pieces = text.split('\x1b[')
     sys.stdout.write(pieces[0])
     sys.stdout.flush()
     for str in pieces[1:]:
@@ -435,10 +438,11 @@ if sys.platform == 'win32': # if os is outdated
       numbers = [int(x) for x in color.split(';')]
       mask = 0
       for x in numbers:
+        if x == 0: mask |= windows_colors[7]
         if x == 1: mask |= FOREGROUND_INTENSITY
         if 30 <= x <= 39: mask |= windows_colors[x - 30]
       ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
-      sys.stdout.write(line)
+      sys.stdout.write(line.encode('utf8').decode('ibm866'))
       sys.stdout.flush()
   def windows_convert_tests( tests ):
     pass
