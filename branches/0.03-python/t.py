@@ -26,22 +26,6 @@ import os, re, shutil, subprocess, sys
 
 # === COMPILERS CONFIGURATION ==
 
-class Language:
-  def __init__( self, name, compile, binary=None ):
-    self.name, self.binary, self.compile = name, binary, compile
-
-class Executable:
-  def __init__( self, path, command=[], add=True ):
-    self.path, self.command = path, list(command)
-    if add: self.command.append(self.path)
-  def __str__( self ):
-    return self.path
-  def __call__( self, arguments=[], stdin=None, stdout=None, stderr=None ):
-    process = subprocess.Popen(self.command + arguments, stdin=stdin, stdout=stdout, stderr=stderr)
-    process.communicate()
-    return process.returncode == 0
-
-
 # Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
 
 def create_compile_default( compiler ):
@@ -129,6 +113,22 @@ suffixes = language.keys()
 #  BINARY_SUFFIX=".exe"
 #fi
 
+class Language:
+  def __init__( self, name, compile, binary=None ):
+    self.name, self.binary, self.compile = name, binary, compile
+
+class Executable:
+  def __init__( self, path, command=[], add=True ):
+    self.path, self.command = path, list(command)
+    if add: self.command.append(self.path)
+  def __str__( self ):
+    return self.path
+  def __call__( self, arguments=[], stdin=None, stdout=None, stderr=None ):
+    process = subprocess.Popen(self.command + arguments, stdin=stdin, stdout=stdout, stderr=stderr)
+    process.communicate()
+    return process.returncode == 0
+
+
 class Log:
   DEBUG = 1
   INFO = 2
@@ -203,7 +203,7 @@ class Source:
       log('compile skipped: %s' % binary)
       skip = True
     else:
-      log('compile: %s -> %s' % (self.path, binary))
+      log('compile: %s → %s' % (self.path, binary))
     return self.language.compile(self.path, binary, skip)
 
 
