@@ -52,7 +52,7 @@ def compilers_configure():
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash', binary])
-  executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss128M', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss128M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
   executable_perl = lambda binary: Executable(binary, ['perl', binary])
   executable_python2 = lambda binary: Executable(binary, ['python2', binary])
   executable_python3 = lambda binary: Executable(binary, ['python3', binary])
@@ -68,7 +68,7 @@ def compilers_configure():
     'c++': Compiler(binary_default, command_cpp, executable_default),
     'delphi': Compiler(binary_default, command_delphi, executable_default),
     'java': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java),
-    'pascal': Compiler(binary_default, command_pascal, binary_default),
+    'pascal': Compiler(binary_default, command_pascal, executable_default),
     'perl': Compiler(binary_none, None, executable_perl),
     'python2': Compiler(binary_none, None, executable_python2),
     'python3': Compiler(binary_none, None, executable_python3)
