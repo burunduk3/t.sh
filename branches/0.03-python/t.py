@@ -52,7 +52,7 @@ def compilers_configure():
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash', binary])
-  executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss128M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java = lambda binary: Executable(binary, ['java', '-Xmx64M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
   executable_perl = lambda binary: Executable(binary, ['perl', binary])
   executable_python2 = lambda binary: Executable(binary, ['python2', binary])
   executable_python3 = lambda binary: Executable(binary, ['python3', binary])
@@ -460,7 +460,9 @@ def check_problem( problem_configuration, solution=None ):
       return False
     log.write('* ')
     result = checker(arguments=[input_name, output_name, test + '.a'])
-    if not result: log.error('Wrong answer on test %s.' % test)
+    if not result:
+      log('Wrong answer on test %s.' % test, Log.ERROR, exit=False)
+      return False
   return True
 
 def clean_problem( path ):
@@ -590,7 +592,7 @@ for problem in problems:
   problem_configuration = read_configuration(problem)
   if command == 'build':
     build_problem(problem_configuration)
-    check_problem(problem_configuration)
+    if not check_problem(problem_configuration): break
   elif command == 'check':
     if len(arguments) > 1:
       problem_configuration['solution'] = arguments[1]

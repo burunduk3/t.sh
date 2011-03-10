@@ -482,7 +482,10 @@ function readProblemProperties()
 t_build()
 {
   find_problem "`pwd`"
-  problems=(${result[*]});
+  for (( currentProblem = 0; currentProblem < ${#result[*]}; currentProblem++ )); do
+    tsh_message 'debug' "result[$currentProblem] = ${result[$currentProblem]}"
+  done
+  problems=("${result[*]}");
   for (( currentProblem = 0; currentProblem < ${#problems[*]}; currentProblem++ )); do
     problemDirectory="${problems[$currentProblem]}"
     problemName="`echo "$problemDirectory" | sed -e 's/^.*[\/.]\([^\/.]*\)$/\1/'`"
@@ -516,7 +519,7 @@ t_build()
 
     pushd "$sourceDirectory" > /dev/null 2>&1
     # clean:
-    if [ -d $testsDirectory ]; then
+    if [ -d "$testsDirectory" ]; then
       rm --force "$testsDirectory"/[0-9][0-9]{,[0-9]}{,.a} || tsh_message "fatal" "rm failed"
     else
       mkdir "$testsDirectory" || tsh_message "fatal" "mkdir failed"
