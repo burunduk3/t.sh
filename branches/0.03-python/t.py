@@ -51,11 +51,11 @@ def compilers_configure():
   command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
-  executable_bash = lambda binary: Executable(binary, ['bash', binary])
+  executable_bash = lambda binary: Executable(binary, ['bash'])
   executable_java = lambda binary: Executable(binary, ['java', '-Xmx64M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
-  executable_perl = lambda binary: Executable(binary, ['perl', binary])
-  executable_python2 = lambda binary: Executable(binary, ['python2', binary])
-  executable_python3 = lambda binary: Executable(binary, ['python3', binary])
+  executable_perl = lambda binary: Executable(binary, ['perl'])
+  executable_python2 = lambda binary: Executable(binary, ['python2'])
+  executable_python3 = lambda binary: Executable(binary, ['python3'])
 
   configuration.detector = {
     'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
@@ -125,7 +125,6 @@ class Configuration:
     self.compilers = {}
     self.detector = {}
   def detect_language( self, source ):
-    global log
     suffix = os.path.splitext(source)[1][1:]
     if suffix not in self.detector: return None
     detector = self.detector[suffix]
