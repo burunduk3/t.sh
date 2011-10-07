@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf8 -*-
 
-import os, re, shutil, subprocess, sys, threading, time
+import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 
 # t.py test tool — python clone of outdated t.cmd
 # version 0.03-alpha0-r1  Every time you commit modified version of t.py, increment -r<number>
@@ -52,7 +52,7 @@ def compilers_configure():
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash'])
-  executable_java = lambda binary: Executable(binary, ['java', '-Xmx64M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss256M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
   executable_perl = lambda binary: Executable(binary, ['perl'])
   executable_python2 = lambda binary: Executable(binary, ['python2'])
   executable_python3 = lambda binary: Executable(binary, ['python3'])
@@ -63,15 +63,15 @@ def compilers_configure():
     'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
   }
   configuration.compilers = {
-    'bash': Compiler(binary_none, None, executable_bash),
-    'c': Compiler(binary_default, command_c, executable_default),
-    'c++': Compiler(binary_default, command_cpp, executable_default),
-    'delphi': Compiler(binary_default, command_delphi, executable_default),
-    'java': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java),
-    'pascal': Compiler(binary_default, command_pascal, executable_default),
-    'perl': Compiler(binary_none, None, executable_perl),
-    'python2': Compiler(binary_none, None, executable_python2),
-    'python3': Compiler(binary_none, None, executable_python3)
+    'bash': Compiler(binary_none, None, executable_bash, 'bash'),
+    'c': Compiler(binary_default, command_c, executable_default, 'c'),
+    'c++': Compiler(binary_default, command_cpp, executable_default, 'c++'),
+    'delphi': Compiler(binary_default, command_delphi, executable_default, 'delphi'),
+    'java': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java, 'java'),
+    'pascal': Compiler(binary_default, command_pascal, executable_default, 'pascal'),
+    'perl': Compiler(binary_none, None, executable_perl, 'perl'),
+    'python2': Compiler(binary_none, None, executable_python2, 'python2'),
+    'python3': Compiler(binary_none, None, executable_python3, 'python3')
   }
   suffixes = configuration.detector.keys()
 
@@ -132,8 +132,9 @@ class Configuration:
     return self.compilers[detector(source)]
 
 class Compiler:
-  def __init__( self, binary, command, executable ):
+  def __init__( self, binary, command, executable, name ):
     self.binary, self.command, self.executable = binary, command, executable
+    self.name = name
   def __call__( self, source ):
     global log
     binary = self.binary(source)
@@ -259,9 +260,10 @@ def find_solution( path, token, problem ):
 def read_problem_properties( filename ):
   result = {}
   for line in open(filename, 'r').readlines():
-    line = [token.strip() for token in line.split('=', 1)]
-    if len(line) != 2: continue
-    result[line[0]] = line[1]
+    key, value = [token.strip() for token in line.split('=', 1)]
+    if value[0] == '"' and value[-1] == '"':
+      value = value[1:-1]
+    result[key] = value
   return result
 
 def read_configuration( path ):
@@ -273,18 +275,22 @@ def read_configuration( path ):
   for name, value in [
     ('input-file', problem_name + '.in'),
     ('output-file', problem_name + '.out'),
-    ('time-limit', 5),
+    ('time-limit', 5.0),
     ('memory-limit', 256 * 2**20)
   ]:
     if name in configuration: continue
+    log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['name'], repr(value)))
     configuration[name] = value
-  for name in ['time-limit', 'memory-limit']:
+  configuration['time-limit'] = float(configuration['time-limit'])
+  for name in ['memory-limit']:
     configuration[name] = int(configuration[name])
-  for directory in ['source', 'src', 'tests']:
-    if os.path.isdir(os.path.join(path, directory)):
-      configuration.update({'source-directory': os.path.join(path, directory)})
-      break
-  configuration.update({'tests-directory': os.path.join(path, 'tests')})
+  if 'source-directory' not in configuration:
+      for directory in ['source', 'src', 'tests']:
+        if os.path.isdir(os.path.join(path, directory)):
+          configuration.update({'source-directory': os.path.join(path, directory)})
+          break
+  if 'tests-directory' not in configuration:
+      configuration.update({'tests-directory': os.path.join(path, 'tests')})
   return configuration
 
 def convert_tests( tests ):
@@ -464,6 +470,80 @@ def check_problem( problem_configuration, solution=None ):
       return False
   return True
 
+class WolfConnection:
+    def __init__( self ):
+        self.__socket = socket.socket()
+        self.__socket.connect(('127.0.0.1', 1917))
+        self.__tail = b''
+        self.__queue = iter([])
+
+    def query( self, j ):
+        self.__socket.send((json.dumps(j) + '\n').encode('utf-8'))
+        while True:
+            r = next(self.__queue, None)
+            if r is not None:
+                return r
+            data = self.__socket.recv(4096).split(b'\n')
+            self.__tail += data[0]
+            queue = []
+            for x in data[1:]:
+                queue.append(json.loads(self.__tail.decode('utf-8')))
+                self.__tail = x
+            self.__queue = iter(queue)
+
+def wolf_export( configuration ):
+    log.info("== upload problem %s" % configuration['name'])
+    os.chdir(configuration['tests-directory'])
+    if 'full' not in configuration:
+        log.error("cannot full name for problem %s" % configuration['name'])
+    checker = None
+    for checker_name in ['check', 'checker', 'check_' + configuration['name'], 'checker_' + configuration['name']]:
+        checker = find_source(os.path.join('..', checker_name))
+        if checker is not None: break
+    if checker is None:
+        log.error('cannot find checker')
+    wolf_compilers = {
+        'delphi': 'win32.checker.delphi'
+    }
+    checker_name = os.path.basename(checker)
+    compiler = wolf_compilers[global_config.detect_language(checker).name]
+    tests = list(find_tests(configuration['tests-directory']))
+    if not tests: log.error('no tests found in %s' % configuration['tests-directory'])
+    log('  name: %s' % configuration['name'])
+    log('  full name: %s' % configuration['full'])
+    log('  input file: %s' % configuration['input-file'])
+    log('  output file: %s' % configuration['output-file'])
+    log('  time limit: %s' % configuration['time-limit'])
+    log('  memory limit: %s' % configuration['memory-limit'])
+    log('  checker: %s (compiled with %s)' % (checker_name, compiler))
+    log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
+    with open(checker, 'rb') as f:
+        data = f.read()
+        checker = base64.b64encode(data).decode('ascii')
+    wolf = WolfConnection()
+    assert wolf.query({'action': 'ping'}) is True
+    log.write('send packets:')
+    problem_id = wolf.query({'action': 'problem.create', 'name': configuration['name'], 'full': configuration['full']})
+    assert isinstance(problem_id, int)
+    log.write('.')
+    assert wolf.query({'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'], 'output': configuration['output-file']})
+    log.write('.')
+    assert wolf.query({'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'], 'memory': configuration['memory-limit']})
+    log.write('.')
+    assert wolf.query({'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name, 'compiler': compiler, 'source': checker})
+    log.write('.')
+    for test in tests:
+        with open(test, 'rb') as f:
+            data = f.read()
+            input = base64.b64encode(data).decode('ascii')
+        with open(test + '.a', 'rb') as f:
+            data = f.read()
+            answer = base64.b64encode(data).decode('ascii')
+        assert wolf.query({'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer})
+        log.write('.')
+    log.write('', end='\n')
+    log.info('uploaded, problem id: %d' % problem_id)
+
 def clean_problem( path ):
   global log, suffixes, options
   os.chdir(path)
@@ -577,10 +657,10 @@ if sys.platform == 'win32': # if os is outdated
   prepare = prepare_windows
 
 log = Log()
-log.warning('You are using testing branch of t.sh, that is under heavy development how.')
 configuration = Configuration()
 compilers_configure()
 prepare()
+global_config = configuration
 
 options, arguments = arguments_parse()
 
@@ -598,4 +678,8 @@ for problem in problems:
     check_problem(problem_configuration)
   elif command == 'clean':
     clean_problem(problem)
+  elif command == 'wolf:export':
+    wolf_export(problem_configuration)
+  else:
+    log.error("unknown command: %s" % command)
 
