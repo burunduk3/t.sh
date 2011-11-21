@@ -40,16 +40,18 @@ def compilers_configure():
     elif 'python2' in shabang: return 'python2'
     else: return 'python2' # python2 is default by now
 
-  include_path = '../../../include'
-  flags_c = ['-O2', '-Wall', '-Wextra', '-I', include_path, '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split(' ')
-  flags_cpp = ['-O2', '-Wall', '-Wextra', '-I', include_path, '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split(' ')
+  include_path = '/home/burunduk3/user/include/testlib.ifmo'
+  # include_path = '../../../include/testlib.ifmo'
+  flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
+  flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
   binary_default = lambda source: os.path.splitext(source)[0]
   binary_java = lambda source: os.path.splitext(source)[0] + '.class'
   binary_none = lambda source: source
   command_c = lambda source,binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source]
   command_cpp = lambda source,binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source]
-  command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
-  command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
+  # command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
+  command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source]
+  command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash'])
   executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss256M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
@@ -283,7 +285,9 @@ def read_configuration( path ):
     configuration[name] = value
   configuration['time-limit'] = float(configuration['time-limit'])
   for name in ['memory-limit']:
-    configuration[name] = int(configuration[name])
+    for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
+      if isinstance(configuration[name], str) and configuration[name].endswith(suffix):
+        configuration[name] = int(configuration[name].replace(suffix, '')) * multiplier
   if 'source-directory' not in configuration:
       for directory in ['source', 'src', 'tests']:
         if os.path.isdir(os.path.join(path, directory)):
@@ -412,14 +416,14 @@ def build_problem( problem_configuration ):
 def check_problem( problem_configuration, solution=None ):
   global configuration, log
   problem_name = problem_configuration['name']
-  os.chdir(problem_configuration['tests-directory'])
+  os.chdir(problem_configuration['path'])
   tests = list(find_tests(problem_configuration['tests-directory']))
   if not tests:
     log.warning('No tests found for problem %s.' % problem_name)
     return False
   checker = None
   for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name]:
-    checker = find_source(os.path.join('..', checker_name))
+    checker = find_source(checker_name)
     if checker is not None: break
   if checker is None:
     log.warning('Checker wasn\'t found, solution wouldn\'t be checked.')
@@ -446,10 +450,12 @@ def check_problem( problem_configuration, solution=None ):
   invoker = Invoker(solution, problem_configuration['time-limit'], problem_configuration['memory-limit'])
   for test in tests:
     log('test [%s] ' % test, Log.INFO, end='')
+    os.chdir(problem_configuration['tests-directory'])
     shutil.copy(test, input_name)
     r = invoker.run(
       stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
       stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
+    os.chdir(problem_configuration['path'])
     good = False
     if r.result == RunResult.RUNTIME:
       log.write('Runtime error (%s).' % r.comment, end='\n', color=Log.ERROR)
@@ -464,7 +470,11 @@ def check_problem( problem_configuration, solution=None ):
     if not good:
       return False
     log.write('* ')
-    result = checker(arguments=[input_name, output_name, test + '.a'])
+    result = checker(arguments=[
+        os.path.join(problem_configuration['tests-directory'], input_name),
+        os.path.join(problem_configuration['tests-directory'], output_name),
+        os.path.join(problem_configuration['tests-directory'], test + '.a')
+    ])
     if not result:
       log('Wrong answer on test %s.' % test, Log.ERROR, exit=False)
       return False
@@ -503,7 +513,10 @@ def wolf_export( configuration ):
     if checker is None:
         log.error('cannot find checker')
     wolf_compilers = {
-        'delphi': 'win32.checker.delphi'
+        'delphi': 'win32.checker.delphi.ifmo',
+        # 'delphi': 'win32.checker.delphi.kitten',
+        'c++': 'win32.checker.c++',
+        'perl': 'win32.perl' # nothing special
     }
     checker_name = os.path.basename(checker)
     compiler = wolf_compilers[global_config.detect_language(checker).name]
@@ -651,7 +664,7 @@ def arguments_parse():
     else:
       arguments.append(arg)
   return options, arguments
-  
+
 
 if sys.platform == 'win32': # if os is outdated
   prepare = prepare_windows
