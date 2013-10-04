@@ -344,8 +344,13 @@ def build_problem( problem_configuration ):
     os.mkdir(problem_configuration['tests-directory'])
   #
   os.chdir(problem_configuration['source-directory'])
+  dotests = find_source('do_tests')
   doall = find_source('doall')
-  if doall is not None:
+  if dotests is not None:
+    log('using generatoe: %s' % dotests)
+    result = just_run(dotests)
+    if not result: log.error('generator failed')
+  elif doall is not None:
     log('using generator: %s' % doall)
     result = just_run(doall)
     if not result: log.error('generator failed')
@@ -566,7 +571,7 @@ def clean_problem( path ):
       if not re.match('^\d{2,3}(.a)?$', filename): continue
       os.remove(os.path.join('tests', filename))
   if os.path.isfile(os.path.join('tests', 'tests.gen')): os.remove(os.path.join('tests', 'tests.gen'))
-  for directory in [os.path.join(path, sub) for sub in ['.', 'tests', 'src', 'source']]:
+  for directory in [os.path.join(path, sub) for sub in ['.', 'tests', 'src', 'source', 'solutions']]:
     if not os.path.isdir(directory): continue
     for filename in os.listdir(directory):
       if re.search('\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename):
@@ -581,7 +586,7 @@ def clean_problem( path ):
       if cleaner_name is None: continue
       result = just_run(cleaner_name)
       if not result:
-        log.warning('%s returned non-zero' % cleaner)
+        log.warning('%s returned non-zero' % cleaner_name)
   os.chdir(path)
   if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
     os.rmdir('tests')
