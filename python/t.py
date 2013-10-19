@@ -32,6 +32,11 @@ import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 # Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
 
 def compilers_configure():
+  java_cp_suffix = os.environ.get('CLASSPATH', None)
+  if java_cp_suffix is None:
+      java_cp_suffix = ""
+  else:
+      java_cp_suffix = ":" + java_cp_suffix
   global configuration, suffixes
   def detector_python( source ):
     shabang = open(source, 'r').readline()
@@ -54,7 +59,9 @@ def compilers_configure():
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash'])
-  executable_java = lambda binary: Executable(binary, ['java', '-Xmx256M', '-Xss256M', '-ea', '-cp', os.path.dirname(binary), os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java = lambda binary: Executable(binary, ['java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary) + java_cp_suffix, os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java_checker = lambda binary: Executable(binary,
+      ["java", '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', "-cp", os.path.dirname(binary) + java_cp_suffix, "ru.ifmo.testlib.CheckerFramework", os.path.splitext(os.path.basename(binary))[0]], add=False)
   executable_perl = lambda binary: Executable(binary, ['perl'])
   executable_python2 = lambda binary: Executable(binary, ['python2'])
   executable_python3 = lambda binary: Executable(binary, ['python3'])
@@ -70,6 +77,7 @@ def compilers_configure():
     'c++': Compiler(binary_default, command_cpp, executable_default, 'c++'),
     'delphi': Compiler(binary_default, command_delphi, executable_default, 'delphi'),
     'java': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java, 'java'),
+    'java_checker': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java_checker, 'java'),
     'pascal': Compiler(binary_default, command_pascal, executable_default, 'pascal'),
     'perl': Compiler(binary_none, None, executable_perl, 'perl'),
     'python2': Compiler(binary_none, None, executable_python2, 'python2'),
@@ -127,6 +135,8 @@ class Configuration:
     self.compilers = {}
     self.detector = {}
   def detect_language( self, source ):
+    if source.endswith('Check.java'):
+        return self.compilers["java_checker"]
     suffix = os.path.splitext(source)[1][1:]
     if suffix not in self.detector: return None
     detector = self.detector[suffix]
@@ -180,7 +190,7 @@ class Invoker:
     self.condition.release()
   def run( self, stdin=None, stdout=None, stderr=None ):
     global log
-    resource.setrlimit(resource.RLIMIT_CPU, (self.limit_time, -1))
+    resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
     resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
     start = time.time()
     self.process = subprocess.Popen(self.executable.command, stdin=stdin, stdout=stdout, stderr=stderr)
@@ -270,7 +280,7 @@ def read_problem_properties( filename ):
 
 def read_configuration( path ):
   problem_name = os.path.basename(os.path.abspath(path))
-  configuration = {'path': path, 'name': problem_name}
+  configuration = {'path': path, 'id': problem_name}
   ppfile = os.path.join(path, 'problem.properties')
   if os.path.isfile(ppfile):
     configuration.update(read_problem_properties(ppfile))
@@ -278,10 +288,10 @@ def read_configuration( path ):
     ('input-file', problem_name + '.in'),
     ('output-file', problem_name + '.out'),
     ('time-limit', 5.0),
-    ('memory-limit', 256 * 2**20)
+    ('memory-limit', 512 * 2**20)
   ]:
     if name in configuration: continue
-    log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['name'], repr(value)))
+    log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['id'], repr(value)))
     configuration[name] = value
   configuration['time-limit'] = float(configuration['time-limit'])
   for name in ['memory-limit']:
@@ -326,7 +336,7 @@ def just_run( source, stdin=None, stdout=None ):
 def build_problem( problem_configuration ):
   global configuration, log
   path = problem_configuration['path']
-  problem_name = problem_configuration['name']
+  problem_name = problem_configuration['id']
   log('== building problem “%s” ==' % problem_name)
   config_names = {'path': 'problem path', 'solution': 'default solution', 'source-directory': 'source directory', 'input-file': 'input file', 'output-file': 'output file'}
   for key in sorted(problem_configuration.keys()):
@@ -344,13 +354,12 @@ def build_problem( problem_configuration ):
     os.mkdir(problem_configuration['tests-directory'])
   #
   os.chdir(problem_configuration['source-directory'])
-  dotests = find_source('do_tests')
-  doall = find_source('doall')
-  if dotests is not None:
-    log('using generatoe: %s' % dotests)
-    result = just_run(dotests)
-    if not result: log.error('generator failed')
-  elif doall is not None:
+  doall = find_source('do_tests')
+  if doall is None:
+      doall = find_source('doall')
+  if doall is None:
+      doall = find_source('TestGen')
+  if doall is not None:
     log('using generator: %s' % doall)
     result = just_run(doall)
     if not result: log.error('generator failed')
@@ -420,14 +429,14 @@ def build_problem( problem_configuration ):
 
 def check_problem( problem_configuration, solution=None ):
   global configuration, log
-  problem_name = problem_configuration['name']
+  problem_name = problem_configuration['id']
   os.chdir(problem_configuration['path'])
   tests = list(find_tests(problem_configuration['tests-directory']))
   if not tests:
     log.warning('No tests found for problem %s.' % problem_name)
     return False
   checker = None
-  for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name]:
+  for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name, 'Check']:
     checker = find_source(checker_name)
     if checker is not None: break
   if checker is None:
@@ -438,6 +447,9 @@ def check_problem( problem_configuration, solution=None ):
   if checker is None:
     log.warning('Checker: compilation error.')
     return False
+  # if checker.name == 'Check.java':
+  #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. ru.ifmo.testlib.CheckerFramework Check"
+  #
   solution_name = problem_configuration['solution'] if solution is None else solution
   solution = find_solution(problem_configuration['path'], solution_name, problem_name)
   if solution is None:
@@ -507,12 +519,12 @@ class WolfConnection:
             self.__queue = iter(queue)
 
 def wolf_export( configuration ):
-    log.info("== upload problem %s" % configuration['name'])
+    log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
-        log.error("cannot full name for problem %s" % configuration['name'])
+        log.error("cannot full name for problem %s" % configuration['id'])
     checker = None
-    for checker_name in ['check', 'checker', 'check_' + configuration['name'], 'checker_' + configuration['name']]:
+    for checker_name in ['check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']]:
         checker = find_source(os.path.join('..', checker_name))
         if checker is not None: break
     if checker is None:
@@ -527,7 +539,7 @@ def wolf_export( configuration ):
     compiler = wolf_compilers[global_config.detect_language(checker).name]
     tests = list(find_tests(configuration['tests-directory']))
     if not tests: log.error('no tests found in %s' % configuration['tests-directory'])
-    log('  name: %s' % configuration['name'])
+    log('  name: %s' % configuration['id'])
     log('  full name: %s' % configuration['full'])
     log('  input file: %s' % configuration['input-file'])
     log('  output file: %s' % configuration['output-file'])
@@ -541,7 +553,7 @@ def wolf_export( configuration ):
     wolf = WolfConnection()
     assert wolf.query({'action': 'ping'}) is True
     log.write('send packets:')
-    problem_id = wolf.query({'action': 'problem.create', 'name': configuration['name'], 'full': configuration['full']})
+    problem_id = wolf.query({'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']})
     assert isinstance(problem_id, int)
     log.write('.')
     assert wolf.query({'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'], 'output': configuration['output-file']})
