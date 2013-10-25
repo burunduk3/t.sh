@@ -43,7 +43,7 @@ def compilers_configure():
     if shabang[0:2] != '#!': shabang = ''
     if 'python3' in shabang: return 'python3'
     elif 'python2' in shabang: return 'python2'
-    else: return 'python2' # python2 is default by now
+    else: return 'python3' # python3 is default
 
   include_path = '/home/burunduk3/user/include/testlib.ifmo'
   # include_path = '../../../include/testlib.ifmo'
@@ -76,7 +76,7 @@ def compilers_configure():
     'c': Compiler(binary_default, command_c, executable_default, 'c'),
     'c++': Compiler(binary_default, command_cpp, executable_default, 'c++'),
     'delphi': Compiler(binary_default, command_delphi, executable_default, 'delphi'),
-    'java': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java, 'java'),
+    'java': Compiler(binary_java, lambda source,binary: ['javac', '-cp', os.path.dirname(source), source], executable_java, 'java'),
     'java_checker': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java_checker, 'java'),
     'pascal': Compiler(binary_default, command_pascal, executable_default, 'pascal'),
     'perl': Compiler(binary_none, None, executable_perl, 'perl'),
@@ -354,17 +354,19 @@ def build_problem( problem_configuration ):
     os.mkdir(problem_configuration['tests-directory'])
   #
   os.chdir(problem_configuration['source-directory'])
-  doall = find_source('do_tests')
-  if doall is None:
-      doall = find_source('doall')
-  if doall is None:
-      doall = find_source('TestGen')
+  doall = None
+  if 'generator' in problem_configuration:
+      doall = find_source(problem_configuration['generator'])
+  for x in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests']:
+      if doall is not None:
+          break
+      doall = find_source(x)
   if doall is not None:
     log('using generator: %s' % doall)
     result = just_run(doall)
     if not result: log.error('generator failed')
   else:
-    log('auto-generating tests')
+    log('auto-generate tests')
     count_hand, count_gen = 0, 0
     for test in ['%02d' % i for i in range(100)]:
       target = os.path.join(problem_configuration['tests-directory'], test)
