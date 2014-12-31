@@ -288,7 +288,7 @@ def read_configuration( path ):
     ('input-file', problem_name + '.in'),
     ('output-file', problem_name + '.out'),
     ('time-limit', 5.0),
-    ('memory-limit', 512 * 2**20)
+    ('memory-limit', 768 * 2**20)
   ]:
     if name in configuration: continue
     log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['id'], repr(value)))
@@ -353,14 +353,19 @@ def build_problem( problem_configuration ):
   else:
     os.mkdir(problem_configuration['tests-directory'])
   #
-  os.chdir(problem_configuration['source-directory'])
   doall = None
-  if 'generator' in problem_configuration:
-      doall = find_source(problem_configuration['generator'])
-  for x in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests']:
+  for x in ['tests', 'Tests']:
+      doall = find_source(x)
       if doall is not None:
           break
-      doall = find_source(x)
+  if doall is None:
+      os.chdir(problem_configuration['source-directory'])
+      if 'generator' in problem_configuration:
+          doall = find_source(problem_configuration['generator'])
+      for x in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen', 'gen_tests']:
+          if doall is not None:
+              break
+          doall = find_source(x)
   if doall is not None:
     log('using generator: %s' % doall)
     result = just_run(doall)
@@ -438,13 +443,23 @@ def check_problem( problem_configuration, solution=None ):
     log.warning('No tests found for problem %s.' % problem_name)
     return False
   checker = None
-  for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name, 'Check']:
+  if 'checker' in problem_configuration:
+    checker_name = problem_configuration['checker']
+    if checker_name.startswith('testlib/'):
+      # TODO: configure checker path somewhere
+      checker_name = '/home/burunduk3/code/testlib-ro/trunk/checkers/' + checker_name[8:] + '.cpp'
     checker = find_source(checker_name)
-    if checker is not None: break
+  if checker is None:
+    for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name, 'Check']:
+      checker = find_source(checker_name)
+      if checker is not None: break
   if checker is None:
     log.warning('Checker wasn\'t found, solution wouldn\'t be checked.')
     return False
   compiler = configuration.detect_language(checker)
+  if compiler is None:
+    log.warning('failed to compile checker: %s' % checker)
+    return False
   checker = compiler(checker)
   if checker is None:
     log.warning('Checker: compilation error.')
@@ -582,7 +597,9 @@ def clean_problem( path ):
   remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
   if remove_tests and os.path.isdir('tests'):
     for filename in os.listdir('tests'):
-      if not re.match('^\d{2,3}(.a)?$', filename): continue
+      ok = (filename == "tests.description")
+      ok = ok or re.match('^\d{2,3}(.a)?$', filename)
+      if not ok: continue
       os.remove(os.path.join('tests', filename))
   if os.path.isfile(os.path.join('tests', 'tests.gen')): os.remove(os.path.join('tests', 'tests.gen'))
   for directory in [os.path.join(path, sub) for sub in ['.', 'tests', 'src', 'source', 'solutions']]:
