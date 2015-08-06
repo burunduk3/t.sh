@@ -2,17 +2,16 @@
 # -*- coding: utf8 -*-
 
 import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
+import argparse
+import traceback
 
 # t.py test tool — python clone of outdated t.cmd
 # version 0.03-alpha0-r1  Every time you commit modified version of t.py, increment -r<number>
 # copyright (c) Oleg Davydov, Yury Petrov
 # This program is free sortware, under GPL, for great justice...
 
-# t.py is being developed in a Subversion repository with t.sh:
-# https://burunduk3.geins.ru/svn/public/t.sh
-# You can get latest t.py version there. And, when you make changes to t.py,
-# please commit it to this repository. Ask Oleg Davydov (burunduk3@gmail.com,
-# vk.com/burunduk3) if you don't have access.
+# t.py is located on github: https://github.com/burunduk3/t.sh
+# (python directory)
 
 # === TODO LIST ===
 #  0) restore t.sh features
@@ -22,6 +21,7 @@ import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 #  4) time & memory: invokation, limits, statistics
 #  5) i18n support, simplified locale for windows
 #  6) windows support — remove half of features if os is outdated
+#  7) modify and catch all exceptions
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
@@ -59,9 +59,13 @@ def compilers_configure():
   command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
   executable_default = lambda binary: Executable(binary)
   executable_bash = lambda binary: Executable(binary, ['bash'])
-  executable_java = lambda binary: Executable(binary, ['java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary) + java_cp_suffix, os.path.splitext(os.path.basename(binary))[0]], add=False)
-  executable_java_checker = lambda binary: Executable(binary,
-      ["java", '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', "-cp", os.path.dirname(binary) + java_cp_suffix, "ru.ifmo.testlib.CheckerFramework", os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java = lambda binary: Executable(binary, [
+      'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary) + java_cp_suffix, os.path.splitext(os.path.basename(binary))[0]], add=False)
+  executable_java_checker = lambda binary: Executable(binary, [
+      "java", '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', "-cp",
+      os.path.dirname(binary) + java_cp_suffix, "ru.ifmo.testlib.CheckerFramework",
+      os.path.splitext(os.path.basename(binary))[0]
+  ], add=False)
   executable_perl = lambda binary: Executable(binary, ['perl'])
   executable_python2 = lambda binary: Executable(binary, ['python2'])
   executable_python3 = lambda binary: Executable(binary, ['python3'])
@@ -143,12 +147,17 @@ class Configuration:
     if type(detector) == str: return self.compilers[detector]
     return self.compilers[detector(source)]
 
+
+compile_cache = {}
+
 class Compiler:
   def __init__( self, binary, command, executable, name ):
     self.binary, self.command, self.executable = binary, command, executable
     self.name = name
   def __call__( self, source ):
-    global log
+    global log, compile_cache
+    if source in compile_cache:
+        return compile_cache[source]
     binary = self.binary(source)
     if binary == source or self.command is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
       log('compile skipped: %s' % binary)
@@ -158,7 +167,8 @@ class Compiler:
       process = subprocess.Popen(command)
       process.communicate()
       if process.returncode != 0: return None
-    return self.executable(binary)
+    compile_cache[source] = self.executable(binary)
+    return compile_cache[source]
 
 
 class Executable:
@@ -333,6 +343,39 @@ def just_run( source, stdin=None, stdout=None ):
     return None
   return executable(stdin=stdin, stdout=stdout)
 
+def testset_answers ( problem_configuration, tests, force=False, quiet=False ):
+  global configuration, log
+  path = problem_configuration['path']
+  problem_name = problem_configuration['id']
+  solution = find_solution(path, problem_configuration['solution'], problem_name) if 'solution' in problem_configuration else None
+  if solution is None:
+    log.warning('Solution not found.')
+    return False
+  solution = os.path.join(path, solution)
+  compiler = configuration.detect_language(solution)
+  solution = compiler(solution)
+  if not quiet:
+      log('generate answers', end='')
+  input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
+  input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
+  output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
+  for test in tests:
+    if os.path.isfile(test + '.a') and not force:
+      if not quiet:
+          log.write('+')
+      continue
+    if not quiet:
+        log.write('.')
+    shutil.copy(test, input_name)
+    r = solution(
+      stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
+      stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
+    if not r: log.error('Solution failed on test %s.' % test)
+    shutil.copy(output_name, test + '.a')
+  if not quiet:
+      log.write('done\n')
+  return True
+
 def build_problem( problem_configuration ):
   global configuration, log
   path = problem_configuration['path']
@@ -408,37 +451,63 @@ def build_problem( problem_configuration ):
       if validator(arguments=[test], stdin=open(test, 'r')): continue
       log.error('Test %s failed validation.' % test)
     log.write('done\n')
-  solution = find_solution(path, problem_configuration['solution'], problem_name) if 'solution' in problem_configuration else None
-  if solution is None:
-    log.warning('Solution not found.')
-    return False
-  solution = os.path.join(path, solution)
-  compiler = configuration.detect_language(solution)
-  solution = compiler(solution)
-  log('generate answers', end='')
-  input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
-  input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
-  output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
-  for test in tests:
-    if os.path.isfile(test + '.a'):
-      log.write('+')
-      continue
-    log.write('.')
-    shutil.copy(test, input_name)
-    r = solution(
-      stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
-      stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
-    if not r: log.error('Solution failed on test %s.' % test)
-    shutil.copy(output_name, test + '.a')
-  log.write('done\n')
-  return True
+  testset_answers (problem_configuration, tests)
 
 
-def check_problem( problem_configuration, solution=None ):
+class Test:
+    FILE, GENERATOR = range (2)
+
+    def __init__ ( self, problem=None, path=None, generator=None, name=None ):
+        self.__problem = problem
+        self.__path = path
+        self.__name = name
+        if self.__name is None:
+            self.__name = self.__path
+        if self.__name is None:
+            self.__name = '<unknown>'
+        if generator is not None:
+            self.__type = Test.GENERATOR
+            self.__generator = generator
+        elif path is not None:
+            self.__type = Test.FILE
+        else:
+            raise Exception ("failed to create test: unknown type")
+    
+    def __str__ ( self ):
+        return self.__name
+
+    def create ( self ):
+        return {
+            Test.FILE: lambda: self.__path,
+            Test.GENERATOR: lambda: self.__create_generate ()
+        } [self.__type] ()
+
+    def __create_generate ( self ):
+        assert self.__type is Test.GENERATOR
+        path = '.temp/00' if self.__path is None else self.__path
+        result = just_run (self.__generator, stdout=open(path, 'w'))
+        # TODO: validate test
+        testset_answers (self.__problem, [path], force=True, quiet=True)
+        if not result:
+            log.error('generator (%s) failed' % self.__generator)
+            return None
+        return path
+    
+    @classmethod
+    def file ( self, path, problem=None, name=None ):
+        return Test (problem, path=path, name=name)
+
+    @classmethod
+    def generate ( self, generator, problem=None, name=None ):
+        return Test (problem, generator=generator, name=name)
+
+
+def check_problem( problem_configuration, solution=None, tests=None, quiet=False ):
   global configuration, log
   problem_name = problem_configuration['id']
   os.chdir(problem_configuration['path'])
-  tests = list(find_tests(problem_configuration['tests-directory']))
+  if tests is None:
+      tests = [Test.file (x) for x in find_tests (problem_configuration['tests-directory'])]
   if not tests:
     log.warning('No tests found for problem %s.' % problem_name)
     return False
@@ -477,13 +546,17 @@ def check_problem( problem_configuration, solution=None ):
   if solution is None:
     log.warning('Solution (%s): compilation error.' % solution_name)
     return False
-  log.info('checking solution: %s' % solution)
+  if not quiet:
+      log.info('checking solution: %s' % solution)
   input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
   input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
   output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
   invoker = Invoker(solution, problem_configuration['time-limit'], problem_configuration['memory-limit'])
-  for test in tests:
-    log('test [%s] ' % test, Log.INFO, end='')
+  for x in tests:
+    test = x.create ()
+    if '/' in test:
+      test = '../' + test
+    log('test [%s] ' % x, Log.INFO, end='')
     os.chdir(problem_configuration['tests-directory'])
     shutil.copy(test, input_name)
     r = invoker.run(
@@ -621,6 +694,8 @@ def clean_problem( path ):
   os.chdir(path)
   if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
     os.rmdir('tests')
+  if (os.path.isdir ('.temp')):
+      os.rmdir ('.temp')
 
 def prepare():
   import resource as r, signal as s
@@ -677,29 +752,80 @@ def prepare_windows():
   log.write = windows_write
   convert_tests = windows_convert_tests
 
-def arguments_parse():
-  arguments, arguments_force = [], False
-  options = {
-    'no-remove-tests': False,
-    'recursive': False
-  }
-  for arg in sys.argv[1:]:
-    if len(arg) >= 1 and arg[0] == '-' and not arguments_force:
-      if len(arg) >= 2 and arg[1] == '-':
-        if arg == '--': arguments_force = True
-        elif arg == '--no-remove-tests': options['no-remove-tests'] = True
-        elif arg == '--recursive': options['recursive'] = True
+
+class T:
+    def __init__ ( self, problems ):
+        self.__problems = problems
+    
+    def __foreach ( self, action ):
+        for problem in self.__problems:
+            action (problem)
+
+    def __build ( self, problem, arguments ):
+        problem_configuration = read_configuration (problem)
+        build_problem (problem_configuration)
+        if not check_problem (problem_configuration):
+            raise Exception ("problem check failed")
+
+    def __check ( self, problem, arguments ):
+        problem_configuration = read_configuration (problem)
+        if len(arguments) >= 1:
+            solution = arguments[0]
         else:
-          pass
-      else:
-        for option in arg[1:]:
-          if option == 't': options['no-remove-tests'] = True
-          elif option == 'r': options['recursive'] = True
-          else:
-            pass
-    else:
-      arguments.append(arg)
-  return options, arguments
+            solution = problem_configuration['solution']
+        check_problem (problem_configuration, solution)
+
+    def __clean ( self, problem, arguments ):
+        clean_problem (problem)
+
+    def __stress ( self, problem, arguments ):
+        problem_configuration = read_configuration (problem)
+        try:
+            generator, solution = arguments[:2]
+        except ValueError as x:
+            raise Exception ("usage: t.py stress <generator> <solution>") from x
+        r = True
+        while r:
+            r = check_problem (problem_configuration, solution=solution, tests=[
+                Test.generate (generator, problem=problem_configuration, name='<stress>')
+            ], quiet=True )
+    
+    def __wolf_export ( self, problem, arguments ):
+        problem_configuration = read_configuration (problem)
+        wolf_export(problem_configuration)
+
+    def __call__ ( self, arguments ):
+        command = arguments[0]
+        action = {
+            x: lambda command, args, y=y: self.__foreach (lambda problem: y (problem, args)) for x, y in [
+                ('build', self.__build),
+                ('check', self.__check),
+                ('clean', self.__clean),
+                ('stress', self.__stress),
+                ('wolf:export', self.__wolf_export)
+            ]
+        ## }.get (command, lambda command, args: raise Exception ("unknown command: %s" % command))
+        }[command]
+        action (command, arguments[1:])
+
+    @classmethod
+    def explore ( self, recursive=False ):
+        if not os.path.isdir ('.temp'):
+            os.mkdir ('.temp')
+        return T (find_problems() if recursive else [os.path.abspath('.')])
+
+
+def arguments_parse():
+    parser = argparse.ArgumentParser (description='t.py: programming contest problem helper')
+    parser.add_argument ('--no-remove-tests', '-t', dest='remove_tests', action='store_false', default=True)
+    parser.add_argument ('--recursive', '-r', dest='recursive', action='store_true', default=False)
+    parser.add_argument ('command', nargs='+')
+    args = parser.parse_args ()
+    options = {
+        'no-remove-tests': not args.remove_tests,
+        'recursive': args.recursive
+    }
+    return options, args.command
 
 
 if sys.platform == 'win32': # if os is outdated
@@ -713,22 +839,10 @@ global_config = configuration
 
 options, arguments = arguments_parse()
 
-command = arguments[0] if len(arguments) > 0 else None
-problems = find_problems() if options['recursive'] else [os.path.abspath('.')]
-
-for problem in problems:
-  problem_configuration = read_configuration(problem)
-  if command == 'build':
-    build_problem(problem_configuration)
-    if not check_problem(problem_configuration): break
-  elif command == 'check':
-    if len(arguments) > 1:
-      problem_configuration['solution'] = arguments[1]
-    check_problem(problem_configuration)
-  elif command == 'clean':
-    clean_problem(problem)
-  elif command == 'wolf:export':
-    wolf_export(problem_configuration)
-  else:
-    log.error("unknown command: %s" % command)
+t = T.explore (recursive=options['recursive'])
+try:
+    t (arguments)
+except Exception as e:
+    print (traceback.format_exc ())
+    sys.exit (1)
 
