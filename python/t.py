@@ -4,6 +4,7 @@
 import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 import argparse
 import traceback
+import random
 
 # t.py test tool — python clone of outdated t.cmd
 # version 0.03-alpha0-r1  Every time you commit modified version of t.py, increment -r<number>
@@ -147,6 +148,58 @@ class Configuration:
     if type(detector) == str: return self.compilers[detector]
     return self.compilers[detector(source)]
 
+
+class Problem:
+    LEV_CREATE = 'problem.create'
+    def __init__ ( self, datalog, create=False ):
+        global log
+        self.__uuid = None
+        self.__actions = {
+            Problem.LEV_CREATE: lambda uuid: self.__create (uuid)
+        }
+        if not create:
+            try:
+                with open (datalog, 'r') as log:
+                    for line in log.readlines ():
+                        self.__event (line)
+            except FileNotFoundError:
+                log.warning ("file not found: '%s', create new" % datalog)
+            self.__datalog = open (datalog, 'a')
+        else:
+            self.__datalog = open (datalog, 'x')
+
+    def __precheck ( self, line ):
+        data = line.split ()
+        event = data[0]
+        if event not in self.__actions:
+            return None
+        return True
+    def __event ( self, line ):
+        data = line.split ()
+        event = data[0]
+        return self.__actions[event] (*data[1:])
+    def __commit ( self, *args ):
+        line = ' '.join (args) # TODO: spaces and so on
+        if self.__precheck (line) is None:
+            return None
+        print (line, file=self.__datalog)
+        self.__datalog.flush ()
+        return self.__event (line)
+
+    def __create ( self, uuid ):
+        self.__uuid = uuid
+        self.__actions = {
+        }
+        return uuid
+
+    def create ( self, uuid=None ):
+        if uuid is None:
+            uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
+        return self.__commit (Problem.LEV_CREATE, uuid)
+
+    @classmethod
+    def new ( self, datalog='.datalog' ):
+        return Problem (datalog, create=True)
 
 compile_cache = {}
 
@@ -754,10 +807,18 @@ def prepare_windows():
 
 
 class T:
-    def __init__ ( self, problems ):
-        self.__problems = problems
+    class Error ( Exception ):
+        def __init__ ( self, comment ):
+            super (T.Error, self).__init__ (comment)
+
+    def __init__ ( self, log, configuration ):
+        self.__log = log
+        self.__configuration = configuration
+        self.__problems = None
     
     def __foreach ( self, action ):
+        if self.__problems is None:
+            self.__explore ()
         for problem in self.__problems:
             action (problem)
 
@@ -765,7 +826,7 @@ class T:
         problem_configuration = read_configuration (problem)
         build_problem (problem_configuration)
         if not check_problem (problem_configuration):
-            raise Exception ("problem check failed")
+            raise T.Error("problem check failed")
 
     def __check ( self, problem, arguments ):
         problem_configuration = read_configuration (problem)
@@ -782,8 +843,8 @@ class T:
         problem_configuration = read_configuration (problem)
         try:
             generator, solution = arguments[:2]
-        except ValueError as x:
-            raise Exception ("usage: t.py stress <generator> <solution>") from x
+        except ValueError as error:
+            raise T.Error ("usage: t.py stress <generator> <solution>") from error
         r = True
         while r:
             r = check_problem (problem_configuration, solution=solution, tests=[
@@ -794,9 +855,15 @@ class T:
         problem_configuration = read_configuration (problem)
         wolf_export(problem_configuration)
 
+    def __problem_create ( self, uuid=None ):
+        problem = Problem.new ()
+        uuid = problem.create (uuid)
+        self.__problems = [problem]
+        self.__log ('create problem #%s' % uuid)
+
     def __call__ ( self, arguments ):
         command = arguments[0]
-        action = {
+        actions = {
             x: lambda command, args, y=y: self.__foreach (lambda problem: y (problem, args)) for x, y in [
                 ('build', self.__build),
                 ('check', self.__check),
@@ -804,15 +871,22 @@ class T:
                 ('stress', self.__stress),
                 ('wolf:export', self.__wolf_export)
             ]
-        ## }.get (command, lambda command, args: raise Exception ("unknown command: %s" % command))
-        }[command]
+        }
+        actions.update ({
+            'problem:create': lambda command, args: self.__problem_create (*args)
+        })
+        try:
+            action = actions[command]
+        except KeyError as error:
+            raise T.Error ("unknown command: '%s'" % command) from error
         action (command, arguments[1:])
 
-    @classmethod
-    def explore ( self, recursive=False ):
+    def __explore ( self, recursive=None ):
         if not os.path.isdir ('.temp'):
             os.mkdir ('.temp')
-        return T (find_problems() if recursive else [os.path.abspath('.')])
+        if recursive is None:
+            recursive = self.__configuration['recursive']
+        self.__problems = find_problems () if recursive else [os.path.abspath('.')]
 
 
 def arguments_parse():
@@ -839,10 +913,10 @@ global_config = configuration
 
 options, arguments = arguments_parse()
 
-t = T.explore (recursive=options['recursive'])
+t = T (log, options)
 try:
     t (arguments)
-except Exception as e:
-    print (traceback.format_exc ())
+except T.Error as e:
+    log.error (e)
     sys.exit (1)
 
