@@ -4,91 +4,110 @@
 import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 import argparse
 import traceback
-import random
-
-# t.py test tool — python clone of outdated t.cmd
-# version 0.03-alpha0-r1  Every time you commit modified version of t.py, increment -r<number>
-# copyright (c) Oleg Davydov, Yury Petrov
-# This program is free sortware, under GPL, for great justice...
-
-# t.py is located on github: https://github.com/burunduk3/t.sh
-# (python directory)
-
-# === TODO LIST ===
-#  0) restore t.sh features
-#  1) help
-#  2) external compilers configuration
-#  3) problem.xml support
-#  4) time & memory: invokation, limits, statistics
-#  5) i18n support, simplified locale for windows
-#  6) windows support — remove half of features if os is outdated
-#  7) modify and catch all exceptions
+from problem import Problem
+import heuristic
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
-
 
 
 # === COMPILERS CONFIGURATION ==
 # Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
 
 def compilers_configure():
-  java_cp_suffix = os.environ.get('CLASSPATH', None)
-  if java_cp_suffix is None:
-      java_cp_suffix = ""
-  else:
-      java_cp_suffix = ":" + java_cp_suffix
-  global configuration, suffixes
-  def detector_python( source ):
-    shabang = open(source, 'r').readline()
-    if shabang[0:2] != '#!': shabang = ''
-    if 'python3' in shabang: return 'python3'
-    elif 'python2' in shabang: return 'python2'
-    else: return 'python3' # python3 is default
+    global configuration, suffixes
 
-  include_path = '/home/burunduk3/user/include/testlib.ifmo'
-  # include_path = '../../../include/testlib.ifmo'
-  flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
-  flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
-  binary_default = lambda source: os.path.splitext(source)[0]
-  binary_java = lambda source: os.path.splitext(source)[0] + '.class'
-  binary_none = lambda source: source
-  command_c = lambda source,binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source]
-  command_cpp = lambda source,binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source]
-  # command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
-  command_delphi = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source]
-  command_pascal = lambda source,binary: ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
-  executable_default = lambda binary: Executable(binary)
-  executable_bash = lambda binary: Executable(binary, ['bash'])
-  executable_java = lambda binary: Executable(binary, [
-      'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', '-cp', os.path.dirname(binary) + java_cp_suffix, os.path.splitext(os.path.basename(binary))[0]], add=False)
-  executable_java_checker = lambda binary: Executable(binary, [
-      "java", '-Xms8M', '-Xmx128M', '-Xss64M', '-ea', "-cp",
-      os.path.dirname(binary) + java_cp_suffix, "ru.ifmo.testlib.CheckerFramework",
-      os.path.splitext(os.path.basename(binary))[0]
-  ], add=False)
-  executable_perl = lambda binary: Executable(binary, ['perl'])
-  executable_python2 = lambda binary: Executable(binary, ['python2'])
-  executable_python3 = lambda binary: Executable(binary, ['python3'])
+    # script = lambda interpeter: lambda binary: Executable (binary, [interpeter])
+    def script ( interpeter ):
+        def result ( binary ):
+            nonlocal interpeter
+            return Executable (binary, [interpeter])
+        return result
+    
+    executable_default = lambda binary: Executable (binary)
+    binary_default = lambda source: os.path.splitext(source)[0]
 
-  configuration.detector = {
-    'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
-    'pas': 'pascal', 'dpr': 'delphi',
-    'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
-  }
-  configuration.compilers = {
-    'bash': Compiler(binary_none, None, executable_bash, 'bash'),
-    'c': Compiler(binary_default, command_c, executable_default, 'c'),
-    'c++': Compiler(binary_default, command_cpp, executable_default, 'c++'),
-    'delphi': Compiler(binary_default, command_delphi, executable_default, 'delphi'),
-    'java': Compiler(binary_java, lambda source,binary: ['javac', '-cp', os.path.dirname(source), source], executable_java, 'java'),
-    'java_checker': Compiler(binary_java, lambda source,binary: ['javac', source], executable_java_checker, 'java'),
-    'pascal': Compiler(binary_default, command_pascal, executable_default, 'pascal'),
-    'perl': Compiler(binary_none, None, executable_perl, 'perl'),
-    'python2': Compiler(binary_none, None, executable_python2, 'python2'),
-    'python3': Compiler(binary_none, None, executable_python3, 'python3')
-  }
-  suffixes = configuration.detector.keys()
+    java_cp_suffix = os.environ.get('CLASSPATH', None)
+    if java_cp_suffix is None:
+        java_cp_suffix = ""
+    else:
+        java_cp_suffix = ":" + java_cp_suffix
+
+    # something strange
+    # include_path = '../../../include/testlib.ifmo'
+    include_path = '/home/burunduk3/user/include/testlib.ifmo'
+    flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
+    flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
+
+    configuration.compilers = {
+        'bash': Compiler ('bash', executable = script ('bash')),
+        'perl': Compiler ('perl', executable = script ('perl')),
+        'python2': Compiler ('python2', executable = script ('python2')),
+        'python3': Compiler ('python3', executable = script ('python3')),
+        'c': Compiler ('c',
+            binary = binary_default,
+            command = lambda source,binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source],
+            executable = executable_default
+        ),
+        'c++': Compiler ('c++',
+            binary = binary_default,
+            command = lambda source,binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source],
+            executable = executable_default
+        ),
+        'delphi': Compiler ('delphi',
+            binary = binary_default,
+            # lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
+            command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
+            executable = executable_default
+        ),
+        'java': Compiler ('java',
+            binary = lambda source: os.path.splitext(source)[0] + '.class',
+            command = lambda source,binary: ['javac', '-cp', os.path.dirname(source), source],
+            executable = lambda binary: Executable (binary, [
+                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
+                '-cp', os.path.dirname(binary) + java_cp_suffix,
+                os.path.splitext(os.path.basename(binary))[0]
+            ], add=False)
+        ),
+        'java.checker': Compiler ('java',
+            binary = lambda source: os.path.splitext(source)[0] + '.class',
+            command = lambda source,binary: ['javac', '-cp', os.path.dirname(source), source],
+            executable = lambda binary: Executable (binary, [
+                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
+                "-cp", os.path.dirname(binary) + java_cp_suffix,
+                "ru.ifmo.testlib.CheckerFramework", os.path.splitext(os.path.basename(binary))[0]
+            ], add=False)
+        ),
+        'pascal': Compiler ('pascal',
+            binary = binary_default,
+            command = lambda source,binary: [
+                'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
+                '-d__T_SH__', '-o'+binary, source
+            ],
+            executable = executable_default
+        ),
+    }
+    heuristic.set_compilers (configuration.compilers)
+
+    def detector_python( source ):
+        with open (source, 'r') as f:
+            shebang = f.readline ()
+            if shebang[0:2] != '#!':
+                shebang = ''
+            if 'python3' in shebang:
+                return 'python3'
+            elif 'python2' in shebang:
+                return 'python2'
+            else:
+                # python3 is default
+                return 'python3'
+
+    configuration.detector = {
+        'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
+        'pas': 'pascal', 'dpr': 'delphi',
+        'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
+    }
+    suffixes = configuration.detector.keys()
 
 
 
@@ -141,7 +160,7 @@ class Configuration:
     self.detector = {}
   def detect_language( self, source ):
     if source.endswith('Check.java'):
-        return self.compilers["java_checker"]
+        return self.compilers["java.checker"]
     suffix = os.path.splitext(source)[1][1:]
     if suffix not in self.detector: return None
     detector = self.detector[suffix]
@@ -149,66 +168,18 @@ class Configuration:
     return self.compilers[detector(source)]
 
 
-class Problem:
-    LEV_CREATE = 'problem.create'
-    def __init__ ( self, datalog, create=False ):
-        global log
-        self.__uuid = None
-        self.__actions = {
-            Problem.LEV_CREATE: lambda uuid: self.__create (uuid)
-        }
-        if not create:
-            try:
-                with open (datalog, 'r') as log:
-                    for line in log.readlines ():
-                        self.__event (line)
-            except FileNotFoundError:
-                log.warning ("file not found: '%s', create new" % datalog)
-            self.__datalog = open (datalog, 'a')
-        else:
-            self.__datalog = open (datalog, 'x')
-
-    def __precheck ( self, line ):
-        data = line.split ()
-        event = data[0]
-        if event not in self.__actions:
-            return None
-        return True
-    def __event ( self, line ):
-        data = line.split ()
-        event = data[0]
-        return self.__actions[event] (*data[1:])
-    def __commit ( self, *args ):
-        line = ' '.join (args) # TODO: spaces and so on
-        if self.__precheck (line) is None:
-            return None
-        print (line, file=self.__datalog)
-        self.__datalog.flush ()
-        return self.__event (line)
-
-    def __create ( self, uuid ):
-        self.__uuid = uuid
-        self.__actions = {
-        }
-        return uuid
-
-    def create ( self, uuid=None ):
-        if uuid is None:
-            uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
-        return self.__commit (Problem.LEV_CREATE, uuid)
-
-    @classmethod
-    def new ( self, datalog='.datalog' ):
-        return Problem (datalog, create=True)
-
 compile_cache = {}
 
 class Compiler:
-  def __init__( self, binary, command, executable, name ):
+  def __init__( self, name, *, binary=None, command=None, executable=None ):
     self.binary, self.command, self.executable = binary, command, executable
+    if binary is None:
+        self.binary = lambda source: source
     self.name = name
   def __call__( self, source ):
     global log, compile_cache
+    if not source.startswith ('/'):
+        source = os.path.join (os.getcwd (), source)
     if source in compile_cache:
         return compile_cache[source]
     binary = self.binary(source)
@@ -234,7 +205,7 @@ class Executable:
   def __str__( self ):
     return self.path
   def __call__( self, arguments=[], stdin=None, stdout=None, stderr=None ):
-    process = subprocess.Popen(self.command + arguments, stdin=stdin, stdout=stdout, stderr=stderr)
+    process = subprocess.Popen(self.command + list (arguments), stdin=stdin, stdout=stdout, stderr=stderr)
     process.communicate()
     return process.returncode == 0
 
@@ -244,58 +215,72 @@ class RunResult:
     self.result, self.exitcode, self.comment = result, exitcode, comment
 
 class Invoker:
-  def __init__( self, executable, limit_time, limit_memory ):
-    self.executable, self.limit_time, self.limit_memory = executable, limit_time, limit_memory
-  def waiter( self ):
-    self.process.communicate()
-    self.condition.acquire()
-    self.condition.notify()
-    self.condition.release()
-  def run( self, stdin=None, stdout=None, stderr=None ):
-    global log
-    resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
-    resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
-    start = time.time()
-    self.process = subprocess.Popen(self.executable.command, stdin=stdin, stdout=stdout, stderr=stderr)
-    pid = self.process.pid
-    self.condition = threading.Condition()
-    thread = threading.Thread(target=self.waiter)
-    thread.start()
-    force_result = None
-    while True:
-      self.condition.acquire()
-      self.condition.wait(0.01)
-      self.condition.release()
-      if self.process.returncode is not None:
-        break
-      try: # так может случится, что процесс завершится в самый интересный момент
-        stat = open("/proc/%d/stat" % pid, 'r')
-        stats = stat.readline().split()
-        stat.close()
-        stat = open("/proc/%d/statm" % pid, 'r')
-        stats_m = stat.readline().split()
-        stat.close()
-        cpu_time = (int(stats[13]) + int(stats[14])) # это ещё надо умножить на коэффициент, который хрен где получишь
-        mem_usage = int(stats_m[0]) * 1024
-        line = "%.3f" % (time.time() - start)
-        line = line + '\b' * len(line)
+    def __init__( self, executable, *, limit_time, limit_idle, limit_memory ):
+        self.__executable = executable
+        self.__limit_time = limit_time
+        self.__limit_idle = limit_idle
+        self.__limit_memory = limit_memory
+        self.__process = None
+        self.__condition = None
+
+    def __waiter( self ):
+        self.__process.communicate()
+        self.__condition.acquire()
+        self.__condition.notify()
+        self.__condition.release()
+
+    def run( self, *, directory=None, stdin=None, stdout=None, stderr=None ):
+        global log
+    # limit resources of current process: bad idea
+    # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
+    # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
+        start = time.time ()
+        self.__process = subprocess.Popen (
+            self.__executable.command, cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
+        )
+        pid = self.__process.pid
+        self.__condition = threading.Condition()
+        thread = threading.Thread(target=self.__waiter)
+        # wait, what?
+        thread.start()
+        force_result = None
+        while True:
+            self.__condition.acquire()
+            self.__condition.wait(0.01)
+            self.__condition.release()
+            if self.__process.returncode is not None:
+                break
+            try: # так может случится, что процесс завершится в самый интересный момент
+                stat = open("/proc/%d/stat" % pid, 'r')
+                stats = stat.readline().split()
+                stat.close()
+                stat = open("/proc/%d/statm" % pid, 'r')
+                stats_m = stat.readline().split()
+                stat.close()
+                cpu_time = (int(stats[13]) + int(stats[14])) / os.sysconf (os.sysconf_names['SC_CLK_TCK'])
+                mem_usage = int(stats_m[0]) * 1024
+                line = "%.3f" % (time.time() - start)
+                line = line + '\b' * len(line)
+                log.write(line)
+                if cpu_time > self.__limit_time:
+                    force_result = RunResult (RunResult.TIME_LIMIT, -1, 'cpu usage: %.2f' % cpu_time)
+                    self.__process.terminate()
+                if mem_usage > self.__limit_memory:
+                    force_result = RunResult(RunResult.MEMORY_LIMIT, -1, 'memory usage: %d' % mem_usage)
+                    self.__process.terminate()
+            except IOError:
+                pass
+        line = "[%.3f] " % (time.time() - start)
         log.write(line)
-        if mem_usage > self.limit_memory:
-          force_result = RunResult(RunResult.MEMORY_LIMIT, -1, 'memory usage: %d' % mem_usage)
-          self.process.terminate()
-      except IOError:
-        pass
-    line = "[%.3f] " % (time.time() - start)
-    log.write(line)
-    if force_result is not None:
-      return force_result
-    code = self.process.returncode
-    if code == -signal.SIGXCPU:
-      return RunResult(RunResult.TIME_LIMIT, code, 'signal SIGXCPU received')
-    elif code != 0:
-      return RunResult(RunResult.RUNTIME, code, 'runtime error %d' % code)
-    else:
-      return RunResult(RunResult.OK, code)
+        if force_result is not None:
+            return force_result
+        code = self.__process.returncode
+        if code == -signal.SIGXCPU:
+            return RunResult(RunResult.TIME_LIMIT, code, 'signal SIGXCPU received')
+        elif code != 0:
+            return RunResult(RunResult.RUNTIME, code, 'runtime error %d' % code)
+        else:
+            return RunResult(RunResult.OK, code)
 
 
 def find_problems( base = '.' ):
@@ -308,13 +293,8 @@ def find_problems( base = '.' ):
       queue += [os.path.join(path, x) for x in sorted(os.listdir(path))]
 
 def find_source( path ):
-  global suffixes
-  for filename in [path + '.' + suffix for suffix in suffixes]:
-    if os.path.isfile(filename):
-      return filename
-  if os.path.isfile(path):
-    return path
-  return None
+    global suffixes
+    return heuristic.Source (suffixes).find (path)
 
 def find_tests( path = '.' ):
   for filename in sorted(os.listdir(path)):
@@ -396,115 +376,86 @@ def just_run( source, stdin=None, stdout=None ):
     return None
   return executable(stdin=stdin, stdout=stdout)
 
-def testset_answers ( problem_configuration, tests, force=False, quiet=False ):
-  global configuration, log
-  path = problem_configuration['path']
-  problem_name = problem_configuration['id']
-  solution = find_solution(path, problem_configuration['solution'], problem_name) if 'solution' in problem_configuration else None
-  if solution is None:
-    log.warning('Solution not found.')
-    return False
-  solution = os.path.join(path, solution)
-  compiler = configuration.detect_language(solution)
-  solution = compiler(solution)
-  if not quiet:
-      log('generate answers', end='')
-  input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
-  input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
-  output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
-  for test in tests:
-    if os.path.isfile(test + '.a') and not force:
-      if not quiet:
-          log.write('+')
-      continue
+def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
+    global log
+    if problem.solution is None:
+        raise T.Error ('[problem %s]: solution not found' % problem.name)
+    problem.solution.compile ()
     if not quiet:
-        log.write('.')
-    shutil.copy(test, input_name)
-    r = solution(
-      stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
-      stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
-    if not r: log.error('Solution failed on test %s.' % test)
-    shutil.copy(output_name, test + '.a')
-  if not quiet:
-      log.write('done\n')
-  return True
-
-def build_problem( problem_configuration ):
-  global configuration, log
-  path = problem_configuration['path']
-  problem_name = problem_configuration['id']
-  log('== building problem “%s” ==' % problem_name)
-  config_names = {'path': 'problem path', 'solution': 'default solution', 'source-directory': 'source directory', 'input-file': 'input file', 'output-file': 'output file'}
-  for key in sorted(problem_configuration.keys()):
-    name = config_names[key] if key in config_names else ('“%s”' % key)
-    log('  * %s: %s' % (name, problem_configuration[key]))
-  if 'solution' not in problem_configuration: log.warning('No solution defined for problem %s.' % problem_name)
-  if 'source-directory' not in problem_configuration: log.error('No source directory defined for problem %s.' % problem_name)
-  os.chdir(path)
-  # cleanup
-  if os.path.isdir(problem_configuration['tests-directory']):
-    for filename in os.listdir(problem_configuration['tests-directory']):
-      if re.match('^\d{2,3}(\.a)?$', filename):
-        os.remove(os.path.join(problem_configuration['tests-directory'], filename))
-  else:
-    os.mkdir(problem_configuration['tests-directory'])
-  #
-  doall = None
-  for x in ['tests', 'Tests']:
-      doall = find_source(x)
-      if doall is not None:
-          break
-  if doall is None:
-      os.chdir(problem_configuration['source-directory'])
-      if 'generator' in problem_configuration:
-          doall = find_source(problem_configuration['generator'])
-      for x in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen', 'gen_tests']:
-          if doall is not None:
-              break
-          doall = find_source(x)
-  if doall is not None:
-    log('using generator: %s' % doall)
-    result = just_run(doall)
-    if not result: log.error('generator failed')
-  else:
-    log('auto-generate tests')
-    count_hand, count_gen = 0, 0
-    for test in ['%02d' % i for i in range(100)]:
-      target = os.path.join(problem_configuration['tests-directory'], test)
-      if os.path.isfile(test + '.hand'):
-        shutil.copy(test + '.hand', target)
-        count_hand += 1
-      elif os.path.isfile(test + '.manual'):
-        shutil.copy(test + '.manual', target)
-        count_hand += 1
-      else:
-        generator = find_source('do' + test)
-        generator = find_source('gen' + test) if generator is None else generator
-        if generator is None: continue
-        result = just_run(generator, stdout=open(target, 'w'))
-        if not result: log.error('generator (%s) failed' % generator)
-        count_gen += 1
-    if count_hand != 0: log('manual tests copied: %d' % count_hand)
-    if count_gen != 0: log('generated tests: %d' % count_gen)
-  tests = list(find_tests(problem_configuration['tests-directory']))
-  if not tests: log.error('no tests found in %s' % problem_configuration['tests-directory'])
-  log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
-  os.chdir(problem_configuration['tests-directory'])
-  convert_tests(tests)
-  validator = None
-  for name in ['validate', 'validator']:
-    validator = find_source(os.path.join(problem_configuration['source-directory'], name))
-    if validator is not None: break
-  if validator is not None:
-    compiler = configuration.detect_language(validator)
-    validator = compiler(validator)
-    log('validate tests', end='')
+        log ('generate answers', end='')
+    input_name, output_name = '.temp/input', '.temp/output'
+  #input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
+  #input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
+  #output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
+    if tests is None:
+        tests = problem.tests
     for test in tests:
-      log.write('.')
-      if validator(arguments=[test], stdin=open(test, 'r')): continue
-      log.error('Test %s failed validation.' % test)
-    log.write('done\n')
-  testset_answers (problem_configuration, tests)
+        if os.path.isfile (test + '.a') and not force:
+            if not quiet:
+                log.write ('+')
+            continue
+        if not quiet:
+            log.write('.')
+        shutil.copy (test, input_name)
+        r = problem.solution.run (stdin=open (input_name, 'r'), stdout=open (output_name, 'w'))
+  #  r = solution(
+  #    stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
+  #    stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
+        if not r:
+            raise T.Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
+        shutil.copy (output_name, test + '.a')
+    if not quiet:
+        log.write ('done\n')
+
+def build_problem ( problem ):
+    global log
+    path = problem.path
+    log ('== building problem “%s” ==' % problem.name)
+    config_names = [
+        ('path', problem.path),
+        ('time limit', problem.limit_time),
+        ('memory limit', problem.limit_memory),
+        ('checker', problem.checker),
+        ('solution', problem.solution),
+        ('generator', problem.generator),
+        ('validator', problem.validator),
+        ('input', problem.input),
+        ('output', problem.output),
+        # ('default solution', ...),
+        # ('source directory', ...)
+    ]
+    for name, value in config_names:
+        if value is None:
+            continue
+        log ('  * %s: %s' % (name, value))
+    os.chdir (path)
+    if problem.solution is None:
+        log.warning('No solution defined for problem %s.' % problem.name)
+    problem.cleanup ()
+    generator = problem.generator
+    assert generator is not None
+    result = generator.run ()
+    if not result:
+        raise T.Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
+  #if 'source-directory' not in problem_configuration: log.error('No source directory defined for problem %s.' % problem_name)
+  ##
+    problem.research_tests ()
+    if not problem.tests:
+        raise T.Error ('[problem %s]: no tests found' % problem.name)
+    log('tests (total: %d): [%s]' % (len (problem.tests), ' '.join (problem.tests)))
+    # TODO: convert_tests(tests), move to generation, for copy
+    validator = problem.validator
+    if validator is not None:
+        validator.compile ()
+        log('validate tests', end='')
+        for test in problem.tests:
+            log.write('.')
+            if validator.run (test, stdin=open(test, 'r')):
+                continue
+            raise T.Error('[problem %s]: validation failed: %s' % (problem.name, test))
+        log.write('done\n')
+  #os.chdir(problem_configuration['tests-directory'])
+    testset_answers (problem)
 
 
 class Test:
@@ -538,9 +489,9 @@ class Test:
     def __create_generate ( self ):
         assert self.__type is Test.GENERATOR
         path = '.temp/00' if self.__path is None else self.__path
-        result = just_run (self.__generator, stdout=open(path, 'w'))
+        result = self.__generator.run (stdout=open(path, 'w'))
         # TODO: validate test
-        testset_answers (self.__problem, [path], force=True, quiet=True)
+        testset_answers (self.__problem, tests=[path], force=True, quiet=True)
         if not result:
             log.error('generator (%s) failed' % self.__generator)
             return None
@@ -555,90 +506,62 @@ class Test:
         return Test (problem, generator=generator, name=name)
 
 
-def check_problem( problem_configuration, solution=None, tests=None, quiet=False ):
-  global configuration, log
-  problem_name = problem_configuration['id']
-  os.chdir(problem_configuration['path'])
-  if tests is None:
-      tests = [Test.file (x) for x in find_tests (problem_configuration['tests-directory'])]
-  if not tests:
-    log.warning('No tests found for problem %s.' % problem_name)
-    return False
-  checker = None
-  if 'checker' in problem_configuration:
-    checker_name = problem_configuration['checker']
-    if checker_name.startswith('testlib/'):
-      # TODO: configure checker path somewhere
-      checker_name = '/home/burunduk3/code/testlib-ro/trunk/checkers/' + checker_name[8:] + '.cpp'
-    checker = find_source(checker_name)
-  if checker is None:
-    for checker_name in ['check', 'checker', 'check_' + problem_name, 'checker_' + problem_name, 'Check']:
-      checker = find_source(checker_name)
-      if checker is not None: break
-  if checker is None:
-    log.warning('Checker wasn\'t found, solution wouldn\'t be checked.')
-    return False
-  compiler = configuration.detect_language(checker)
-  if compiler is None:
-    log.warning('failed to compile checker: %s' % checker)
-    return False
-  checker = compiler(checker)
-  if checker is None:
-    log.warning('Checker: compilation error.')
-    return False
-  # if checker.name == 'Check.java':
-  #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. ru.ifmo.testlib.CheckerFramework Check"
-  #
-  solution_name = problem_configuration['solution'] if solution is None else solution
-  solution = find_solution(problem_configuration['path'], solution_name, problem_name)
-  if solution is None:
-    log.warning('Solution (%s) wasn\'t found.' % solution_name)
-    return False
-  compiler = configuration.detect_language(solution)
-  solution = compiler(solution)
-  if solution is None:
-    log.warning('Solution (%s): compilation error.' % solution_name)
-    return False
-  if not quiet:
-      log.info('checking solution: %s' % solution)
-  input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
-  input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
-  output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
-  invoker = Invoker(solution, problem_configuration['time-limit'], problem_configuration['memory-limit'])
-  for x in tests:
-    test = x.create ()
-    if '/' in test:
-      test = '../' + test
-    log('test [%s] ' % x, Log.INFO, end='')
-    os.chdir(problem_configuration['tests-directory'])
-    shutil.copy(test, input_name)
-    r = invoker.run(
-      stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
-      stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
-    os.chdir(problem_configuration['path'])
-    good = False
-    if r.result == RunResult.RUNTIME:
-      log.write('Runtime error (%s).' % r.comment, end='\n', color=Log.ERROR)
-    elif r.result == RunResult.TIME_LIMIT:
-      log.write('Time limit exceeded (%s).' % r.comment, end='\n', color=Log.ERROR)
-    elif r.result == RunResult.MEMORY_LIMIT:
-      log.write('Memory limit exceeded (%s)' % r.comment, end='\n', color=Log.ERROR)
-    elif r.result == RunResult.OK:
-      good = True
-    else:
-      log.fatal('Invokation failed (%s).' % r.comment)
-    if not good:
-      return False
-    log.write('* ')
-    result = checker(arguments=[
-        os.path.join(problem_configuration['tests-directory'], input_name),
-        os.path.join(problem_configuration['tests-directory'], output_name),
-        os.path.join(problem_configuration['tests-directory'], test + '.a')
-    ])
-    if not result:
-      log('Wrong answer on test %s.' % test, Log.ERROR, exit=False)
-      return False
-  return True
+def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
+    global log
+    os.chdir (problem.path)
+    if tests is None:
+        if not problem.tests:
+            problem.research_tests ()
+        tests = [Test.file (x) for x in problem.tests]
+    if not tests:
+        raise T.Error ('[problem %s]: no tests found' % problem.name)
+    checker = problem.checker
+    if checker is None:
+        raise T.Error ('[problem %s]: no checker found' % problem.name)
+    checker.compile ()
+    if solution is None:
+        solution = problem.solution
+    if solution is None:
+        raise T.Error ('[problem %s]: no solution found' % problem.name)
+    solution.compile ()
+    if not quiet:
+        log.info('checking solution: %s' % solution)
+    input_name, output_name = '.temp/input', '.temp/output'
+  # input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
+  #input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
+  #output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
+    invoker = Invoker (
+        solution.executable, limit_time=problem.limit_time,
+        limit_idle=problem.limit_idle, limit_memory=problem.limit_memory
+    )
+    for x in tests:
+        test = x.create ()
+        log ('test [%s] ' % x, end='')
+        shutil.copy (test, input_name)
+        r = invoker.run (
+            directory='.temp', stdin=open(input_name, 'r'), stdout=open(output_name, 'w')
+        )
+  #    stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
+  #    stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
+        good = False
+        if r.result == RunResult.RUNTIME:
+            log.write ('Runtime error (%s).' % r.comment, end='\n', color=Log.ERROR)
+        elif r.result == RunResult.TIME_LIMIT:
+            log.write ('Time limit exceeded (%s).' % r.comment, end='\n', color=Log.ERROR)
+        elif r.result == RunResult.MEMORY_LIMIT:
+            log.write ('Memory limit exceeded (%s)' % r.comment, end='\n', color=Log.ERROR)
+        elif r.result == RunResult.OK:
+            good = True
+        else:
+            log.fatal ('Invokation failed (%s).' % r.comment)
+        if not good:
+            return False
+        log.write ('* ')
+        result = checker.run (input_name, output_name, test + '.a')
+        if not result:
+            log ('Wrong answer on test %s.' % test, Log.ERROR, exit=False)
+            return False
+    return True
 
 class WolfConnection:
     def __init__( self ):
@@ -717,38 +640,40 @@ def wolf_export( configuration ):
     log.write('', end='\n')
     log.info('uploaded, problem id: %d' % problem_id)
 
-def clean_problem( path ):
-  global log, suffixes, options
-  os.chdir(path)
-  remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
-  if remove_tests and os.path.isdir('tests'):
-    for filename in os.listdir('tests'):
-      ok = (filename == "tests.description")
-      ok = ok or re.match('^\d{2,3}(.a)?$', filename)
-      if not ok: continue
-      os.remove(os.path.join('tests', filename))
-  if os.path.isfile(os.path.join('tests', 'tests.gen')): os.remove(os.path.join('tests', 'tests.gen'))
-  for directory in [os.path.join(path, sub) for sub in ['.', 'tests', 'src', 'source', 'solutions']]:
-    if not os.path.isdir(directory): continue
-    for filename in os.listdir(directory):
-      if re.search('\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename):
-        os.remove(os.path.join(directory, filename))
-      for suffix in suffixes:
-        if not os.path.isfile(os.path.join(directory, filename + '.' + suffix)): continue
-        os.remove(os.path.join(directory, filename))
-        break
-    if remove_tests:
-      os.chdir(directory)
-      cleaner_name = find_source('wipe')
-      if cleaner_name is None: continue
-      result = just_run(cleaner_name)
-      if not result:
-        log.warning('%s returned non-zero' % cleaner_name)
-  os.chdir(path)
-  if remove_tests and (os.path.isdir('source') or os.path.isdir('src')) and os.path.isdir('tests'):
-    os.rmdir('tests')
-  if (os.path.isdir ('.temp')):
-      os.rmdir ('.temp')
+def clean_problem ( problem ):
+    global log, suffixes, options
+    os.chdir (problem.path)
+    remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
+    if remove_tests and os.path.isdir ('.tests'):
+        for filename in os.listdir ('.tests'):
+            ok = (filename in ("tests.description", "tests.gen"))
+            ok = ok or re.match('^\d+(.a)?$', filename)
+            if not ok:
+                continue
+            os.remove (os.path.join ('.tests', filename))
+    for directory in ['.', '.tests', '.temp', 'tests', 'src', 'source', 'solutions']:
+        if not os.path.isdir (directory):
+            continue
+        for filename in os.listdir (directory):
+            if re.match ('^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename) or \
+               filename in ("input", "output"):
+               os.remove (os.path.join (directory, filename))
+            for suffix in suffixes:
+                if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
+                    continue
+                os.remove(os.path.join(directory, filename))
+                break
+        if remove_tests:
+            cleaner = heuristic.Source.find (os.path.join (directory, 'wipe'))
+            if cleaner is None:
+                continue
+            if not cleaner.run ():
+                log.warning ('%s returned non-zero' % cleaner)
+    if remove_tests and (os.path.isdir ('source') or os.path.isdir ('src')) and os.path.isdir ('tests'):
+        os.rmdir ('tests')
+    for directory in ['.temp', '.tests']:
+        if os.path.isdir (directory):
+            os.rmdir (directory)
 
 def prepare():
   import resource as r, signal as s
@@ -812,7 +737,7 @@ class T:
             super (T.Error, self).__init__ (comment)
 
     def __init__ ( self, log, configuration ):
-        self.__log = log
+        self.__log = self.log = log
         self.__configuration = configuration
         self.__problems = None
     
@@ -823,32 +748,32 @@ class T:
             action (problem)
 
     def __build ( self, problem, arguments ):
-        problem_configuration = read_configuration (problem)
-        build_problem (problem_configuration)
-        if not check_problem (problem_configuration):
+        problem.reconfigure ()
+        build_problem (problem)
+        if not check_problem (problem):
             raise T.Error("problem check failed")
 
     def __check ( self, problem, arguments ):
-        problem_configuration = read_configuration (problem)
+        problem.reconfigure ()
+        solution = None
         if len(arguments) >= 1:
-            solution = arguments[0]
-        else:
-            solution = problem_configuration['solution']
-        check_problem (problem_configuration, solution)
+            solution = heuristic.Source.find (arguments[0])
+        check_problem (problem, solution=solution)
 
     def __clean ( self, problem, arguments ):
         clean_problem (problem)
 
     def __stress ( self, problem, arguments ):
-        problem_configuration = read_configuration (problem)
+        problem.reconfigure ()
         try:
             generator, solution = arguments[:2]
         except ValueError as error:
             raise T.Error ("usage: t.py stress <generator> <solution>") from error
+        generator, solution = [heuristic.Source.find (x) for x in (generator, solution)]
         r = True
         while r:
-            r = check_problem (problem_configuration, solution=solution, tests=[
-                Test.generate (generator, problem=problem_configuration, name='<stress>')
+            r = check_problem (problem, solution=solution, tests=[
+                Test.generate (generator, problem=problem, name='<stress>')
             ], quiet=True )
     
     def __wolf_export ( self, problem, arguments ):
@@ -886,7 +811,10 @@ class T:
             os.mkdir ('.temp')
         if recursive is None:
             recursive = self.__configuration['recursive']
-        self.__problems = find_problems () if recursive else [os.path.abspath('.')]
+        self.__problems = [Problem.open (x, t=t) for x in find_problems ()] if recursive else [Problem.open (t=t)]
+        for problem in self.__problems:
+           if problem.uuid is None:
+              problem.create ()
 
 
 def arguments_parse():
@@ -919,4 +847,7 @@ try:
 except T.Error as e:
     log.error (e)
     sys.exit (1)
+except KeyboardInterrupt:
+    log.info ("^C")
+    sys.exit (2)
 
