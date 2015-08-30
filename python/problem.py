@@ -6,6 +6,7 @@ import re
 import shutil
 import struct
 
+import common as t
 from datalog import Datalog, Type
 import heuristic
 
@@ -15,11 +16,14 @@ class Problem (Datalog):
     LEV_LIMIT_TIME = 'problem.limit_time'
     LEV_LIMIT_IDLE = 'problem.limit_idle'
     LEV_LIMIT_MEMORY = 'problem.limit_memory'
+    LEV_INPUT = 'problem.input'
     LEV_INPUT_STD = 'problem.input.std'
+    LEV_OUTPUT = 'problem.output'
     LEV_OUTPUT_STD = 'problem.output.std'
     LEV_CHECKER = 'problem.checker'
     LEV_SOLUTION = 'problem.solution'
     LEV_GENERATOR_AUTO = 'problem.generator.auto'
+    LEV_GENERATOR_EXT = 'problem.generator.external'
     LEV_VALIDATOR = 'problem.validator'
 
 
@@ -30,9 +34,22 @@ class Problem (Datalog):
             def __eq__ ( self, x ):
                 return type (self) is type (x)
 
+        class Name (Type):
+            def __init__ ( self, name ):
+                self.__name = name
+            def __str__ ( self ):
+                return self.__name
+            def __eq__ ( self, x ):
+                if type (self) is not type (x):
+                    return False
+                return self.__name == x.__name
+
         @classmethod
         def std ( cls ):
             return Problem.File.Std ()
+        @classmethod
+        def name ( cls, name ):
+            return Problem.File.Name (name)
 
     class Generator (Type):
         class Auto (Type):
@@ -44,10 +61,29 @@ class Problem (Datalog):
                 return type (self) is type (x)
             def run ( self ):
                 return self.__problem.autogenerate ()
+        class External (Type):
+            def __init__ ( self, problem, source, directory ):
+                self.__problem = problem
+                self.__source = source
+                self.__directory = directory
+            def __str__ ( self ):
+                return str (self.__source)
+            def __eq__ ( self, x ):
+                if type (self) is not type (x):
+                    return False
+                return self.__source == x.__source
+            def run ( self ):
+                r = self.__source.run (directory=self.__directory)
+                if not r:
+                    raise t.Error ('generator failed: %s' % self)
+                return self.__problem.autofind_tests (self.__directory)
         
         @classmethod
         def auto ( cls, problem ):
             return Problem.Generator.Auto (problem)
+        @classmethod
+        def external ( cls, problem, source, directory ):
+            return Problem.Generator.External (problem, source, directory)
 
 
     def __init__ ( self, datalog, *, create=False, t ):
@@ -75,11 +111,15 @@ class Problem (Datalog):
             Problem.LEV_LIMIT_TIME: lambda value: self.__lev_limit_time (value),
             Problem.LEV_LIMIT_IDLE: lambda value: self.__lev_limit_idle (value),
             Problem.LEV_LIMIT_MEMORY: lambda value: self.__lev_limit_memory (value),
+            Problem.LEV_INPUT: lambda value: self.__lev_input_name (value),
             Problem.LEV_INPUT_STD: lambda: self.__lev_input_std (),
+            Problem.LEV_OUTPUT: lambda value: self.__lev_output_name (value),
             Problem.LEV_OUTPUT_STD: lambda: self.__lev_output_std (),
             Problem.LEV_CHECKER: lambda path, compiler: self.__lev_checker (path, compiler),
             Problem.LEV_SOLUTION: lambda path, compiler: self.__lev_solution (path, compiler),
             Problem.LEV_GENERATOR_AUTO: lambda: self.__lev_generator_auto (),
+            Problem.LEV_GENERATOR_EXT: lambda path, compiler, directory: \
+                self.__lev_generator_external (path, compiler, directory),
             Problem.LEV_VALIDATOR: lambda path, compiler: self.__lev_validator (path, compiler)
         }
         return uuid
@@ -98,8 +138,14 @@ class Problem (Datalog):
     def __lev_input_std ( self ):
         self.__input = Problem.File.std ()
         return True
+    def __lev_input_name ( self, value ):
+        self.__input = Problem.File.name (value)
+        return True
     def __lev_output_std ( self ):
         self.__output = Problem.File.std ()
+        return True
+    def __lev_output_name ( self, value ):
+        self.__output = Problem.File.name (value)
         return True
     def __lev_checker ( self, path, compiler ):
         self.__checker = heuristic.Source (path, compiler)
@@ -109,6 +155,11 @@ class Problem (Datalog):
         return True
     def __lev_generator_auto ( self ):
         self.__generator = Problem.Generator.auto (self)
+        return True
+    def __lev_generator_external ( self, path, compiler, directory ):
+        self.__generator = Problem.Generator.external (
+            self, heuristic.Source (path, compiler), directory
+        )
         return True
     def __lev_validator ( self, path, compiler ):
         self.__validator = heuristic.Source (path, compiler)
@@ -135,16 +186,24 @@ class Problem (Datalog):
     limit_memory = property (lambda self: self.__limit_memory, __set_limit_memory)
     def __set_input_std ( self ):
         return self._commit (Problem.LEV_INPUT_STD)
+    def __set_input_name ( self, value ):
+        return self._commit (Problem.LEV_INPUT, value)
     def __set_input ( self, value ):
         if type (value) is Problem.File.Std:
             return self.__set_input_std ()
+        if type (value) is Problem.File.Name:
+            return self.__set_input_name (str (value))
         assert False
     input = property (lambda self: self.__input, __set_input)
     def __set_output_std ( self ):
         return self._commit (Problem.LEV_OUTPUT_STD)
+    def __set_output_name ( self, value ):
+        return self._commit (Problem.LEV_OUTPUT, value)
     def __set_output ( self, value ):
         if type (value) is Problem.File.Std:
             return self.__set_output_std ()
+        if type (value) is Problem.File.Name:
+            return self.__set_output_name (str (value))
         assert False
     output = property (lambda self: self.__output, __set_output)
     def __set_checker ( self, value ):
@@ -155,6 +214,8 @@ class Problem (Datalog):
     solution = property (lambda self: self.__solution, __set_solution)
     def __set_generator_auto ( self ):
         return self._commit (Problem.LEV_GENERATOR_AUTO)
+    def __set_generator_external ( self, value, directory ):
+        return self._commit (Problem.LEV_GENERATOR_EXT, value.path, value.compiler, directory )
     generator = property (lambda self: self.__generator)
     def __set_validator ( self, value ):
         return self._commit (Problem.LEV_VALIDATOR, value.path, value.compiler)
@@ -171,7 +232,7 @@ class Problem (Datalog):
     def __parse_file ( self, value ):
         if value in ('<std>', '<stdin>', '<stdout>'):
             return Problem.File.std ()
-        assert False
+        return Problem.File.name (value)
     def __parse_problem_properties ( self, filename ):
         with open (filename) as x:
             for line in x:
@@ -190,26 +251,28 @@ class Problem (Datalog):
 
     def __autodetect_generator ( self ):
         # TODO:
-  #doall = None
-  #for x in ['tests', 'Tests']:
-  #    doall = find_source(x)
-  #    if doall is not None:
-  #        break
-  #if doall is None:
-  #    os.chdir(problem_configuration['source-directory'])
-  #    if 'generator' in problem_configuration:
-  #        doall = find_source(problem_configuration['generator'])
-  #    for x in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen', 'gen_tests']:
-  #        if doall is not None:
-  #            break
-  #        doall = find_source(x)
-  #if doall is not None:
-  #  log('using generator: %s' % doall)
-  #  result = just_run(doall)
-  #  if not result: log.error('generator failed')
-  #else:
-  #  log('auto-generate tests')
-        return self.__set_generator_auto ()
+        #    if 'generator' in problem_configuration:
+        #        doall = find_source(problem_configuration['generator'])
+        default = lambda: self.__set_generator_auto ()
+        for name in ['tests', 'Tests']:
+            generator = heuristic.Source.find (name)
+            if generator is None:
+                continue
+            return self.__set_generator_external (generator, '.')
+        directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'tests'
+        # self._t.log.debug ('directory: "%s"' % directory)
+        if not os.path.isdir (directory):
+            return default ()
+        for name in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen', 'gen_tests']:
+            # self._t.log.debug ('source: "%s"' % os.path.join (directory, name))
+            generator = heuristic.Source.find (os.path.join (directory, name))
+            if generator is None:
+                continue
+            return self.__set_generator_external (generator, directory)
+        return default ()
+
     def __autodetect_validator ( self ):
         directory = 'source'
         if not os.path.isdir (directory):
@@ -279,6 +342,7 @@ class Problem (Datalog):
                     continue
                 self._t.log ('[%s]: set %s to %s' % (pp_file, key, value))
                 setter (value)
+        # TODO: scan problem.xml
         detectors = [
             ('generator', lambda: self.generator, lambda: self.__autodetect_generator ()),
             ('validator', lambda: self.validator, lambda: self.__autodetect_validator ()),
@@ -331,6 +395,17 @@ class Problem (Datalog):
         if count_gen != 0:
             self._t.log ('generated tests: %d' % count_gen)
         return not failure
+    def autofind_tests ( self, directory ):
+        count = 0
+        for filename in sorted (os.listdir (directory)):
+            if not re.match ('^\d{2,3}$', filename):
+                continue
+            if not os.path.isfile (os.path.join (directory, filename)):
+                continue
+            target = os.path.join ('.tests', '%d' % count)
+            shutil.move (os.path.join (directory, filename), target)
+            count += 1
+        return True
     def research_tests ( self ):
         self.__tests = []
         for x in map (lambda i: os.path.join ('.tests', '%d' % i), itertools.count ()):

@@ -4,6 +4,8 @@
 import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 import argparse
 import traceback
+
+import common as t
 from problem import Problem
 import heuristic
 
@@ -35,7 +37,8 @@ def compilers_configure():
 
     # something strange
     # include_path = '../../../include/testlib.ifmo'
-    include_path = '/home/burunduk3/user/include/testlib.ifmo'
+    # include_path = '/home/burunduk3/user/include/testlib.ifmo'
+    include_path = '/home/burunduk3/user/include'
     flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
@@ -56,8 +59,8 @@ def compilers_configure():
         ),
         'delphi': Compiler ('delphi',
             binary = binary_default,
-            # lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source]
-            command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
+            command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source],
+            # command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
             executable = executable_default
         ),
         'java': Compiler ('java',
@@ -134,6 +137,7 @@ def compilers_configure():
 class Log:
   DEBUG, INFO, NOTICE, WARNING, ERROR, FATAL = range(6)
   def __init__( self ):
+    self.__verbose = False
     self.color = {Log.DEBUG: 37, Log.INFO: 36, Log.NOTICE: 32, Log.WARNING: 33, Log.ERROR: 31, Log.FATAL: 31}
     self.message = {Log.DEBUG: 'debug', Log.INFO: 'info', Log.NOTICE: 'notice', Log.WARNING: 'warning', Log.ERROR: 'error', Log.FATAL: 'fatal error'}
     self.debug = lambda text: self(text, Log.DEBUG)
@@ -143,10 +147,17 @@ class Log:
     self.error = lambda text: self(text, Log.ERROR)
     self.fatal = lambda text: self(text, Log.FATAL)
     pass
-  def __call__( self, message, level = INFO, exit=None, end='\n' ):
-    self.write("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
+  def __call__( self, message, level = INFO, *, exit=None, end='\n', verbose=False ):
+    if verbose and not self.__verbose:
+        return
+    if verbose:
+        self.write ("\x1b[1;%dm[t:%s,verbose]\x1b[0m %s" % (self.color[level], self.message[level], message), end=end)
+    else:
+        self.write ("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
     exit = exit if exit is not None else level >= Log.ERROR
     if exit: sys.exit(1)
+  def verbose ( self ):
+      self.__verbose = True
   def write( self, message, end='', color=None ):
     if color is not None:
       message = "\x1b[1;%dm%s\x1b[0m" % (self.color[color], message)
@@ -184,10 +195,11 @@ class Compiler:
         return compile_cache[source]
     binary = self.binary(source)
     if binary == source or self.command is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
-      log('compile skipped: %s' % binary)
+      log ('compile skipped: %s' % binary)
     else:
-      log('compile: %s → %s' % (source, binary))
+      log ('compile: %s → %s' % (source, binary))
       command = self.command(source, binary)
+      log ('$ %s' % (' '.join (command)), verbose=True)
       process = subprocess.Popen(command)
       process.communicate()
       if process.returncode != 0: return None
@@ -204,9 +216,11 @@ class Executable:
     if add: self.command.append(self.path)
   def __str__( self ):
     return self.path
-  def __call__( self, arguments=[], stdin=None, stdout=None, stderr=None ):
-    process = subprocess.Popen(self.command + list (arguments), stdin=stdin, stdout=stdout, stderr=stderr)
-    process.communicate()
+  def __call__( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
+    process = subprocess.Popen (
+        self.command + list (arguments), cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
+    )
+    process.communicate ()
     return process.returncode == 0
 
 class RunResult:
@@ -379,14 +393,15 @@ def just_run( source, stdin=None, stdout=None ):
 def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     global log
     if problem.solution is None:
-        raise T.Error ('[problem %s]: solution not found' % problem.name)
+        raise t.Error ('[problem %s]: solution not found' % problem.name)
     problem.solution.compile ()
     if not quiet:
         log ('generate answers', end='')
     input_name, output_name = '.temp/input', '.temp/output'
-  #input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
-  #input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
-  #output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
+    if type (problem.input) is Problem.File.Name:
+        input_name = os.path.join ('.temp', str (problem.input))
+    if type (problem.output) is Problem.File.Name:
+        output_name = os.path.join ('.temp', str (problem.output))
     if tests is None:
         tests = problem.tests
     for test in tests:
@@ -397,12 +412,13 @@ def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
         if not quiet:
             log.write('.')
         shutil.copy (test, input_name)
-        r = problem.solution.run (stdin=open (input_name, 'r'), stdout=open (output_name, 'w'))
-  #  r = solution(
-  #    stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
-  #    stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
+        r = problem.solution.run (
+            directory='.temp',
+            stdin=open (input_name, 'r') if type (problem.input) is Problem.File.Std else None,
+            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None
+        )
         if not r:
-            raise T.Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
+            raise t.Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
         shutil.copy (output_name, test + '.a')
     if not quiet:
         log.write ('done\n')
@@ -436,12 +452,12 @@ def build_problem ( problem ):
     assert generator is not None
     result = generator.run ()
     if not result:
-        raise T.Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
+        raise t.Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
   #if 'source-directory' not in problem_configuration: log.error('No source directory defined for problem %s.' % problem_name)
   ##
     problem.research_tests ()
     if not problem.tests:
-        raise T.Error ('[problem %s]: no tests found' % problem.name)
+        raise t.Error ('[problem %s]: no tests found' % problem.name)
     log('tests (total: %d): [%s]' % (len (problem.tests), ' '.join (problem.tests)))
     # TODO: convert_tests(tests), move to generation, for copy
     validator = problem.validator
@@ -452,7 +468,7 @@ def build_problem ( problem ):
             log.write('.')
             if validator.run (test, stdin=open(test, 'r')):
                 continue
-            raise T.Error('[problem %s]: validation failed: %s' % (problem.name, test))
+            raise t.Error('[problem %s]: validation failed: %s' % (problem.name, test))
         log.write('done\n')
   #os.chdir(problem_configuration['tests-directory'])
     testset_answers (problem)
@@ -514,22 +530,23 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
             problem.research_tests ()
         tests = [Test.file (x) for x in problem.tests]
     if not tests:
-        raise T.Error ('[problem %s]: no tests found' % problem.name)
+        raise t.Error ('[problem %s]: no tests found' % problem.name)
     checker = problem.checker
     if checker is None:
-        raise T.Error ('[problem %s]: no checker found' % problem.name)
+        raise t.Error ('[problem %s]: no checker found' % problem.name)
     checker.compile ()
     if solution is None:
         solution = problem.solution
     if solution is None:
-        raise T.Error ('[problem %s]: no solution found' % problem.name)
+        raise t.Error ('[problem %s]: no solution found' % problem.name)
     solution.compile ()
     if not quiet:
         log.info('checking solution: %s' % solution)
     input_name, output_name = '.temp/input', '.temp/output'
-  # input_name, output_name = problem_configuration['input-file'], problem_configuration['output-file']
-  #input_name = problem_name + '.in' if input_name == '<stdin>' else input_name
-  #output_name = problem_name + '.out' if output_name == '<stdout>' else output_name
+    if type (problem.input) is Problem.File.Name:
+        input_name = os.path.join ('.temp', str (problem.input))
+    if type (problem.output) is Problem.File.Name:
+        output_name = os.path.join ('.temp', str (problem.output))
     invoker = Invoker (
         solution.executable, limit_time=problem.limit_time,
         limit_idle=problem.limit_idle, limit_memory=problem.limit_memory
@@ -539,10 +556,10 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
         log ('test [%s] ' % x, end='')
         shutil.copy (test, input_name)
         r = invoker.run (
-            directory='.temp', stdin=open(input_name, 'r'), stdout=open(output_name, 'w')
+            directory='.temp',
+            stdin=open (input_name, 'r') if type (problem.input) is Problem.File.Std else None,
+            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None
         )
-  #    stdin=open(input_name, 'r') if problem_configuration['input-file'] == '<stdin>' else None,
-  #    stdout=open(output_name, 'w') if problem_configuration['output-file'] == '<stdout>' else None)
         good = False
         if r.result == RunResult.RUNTIME:
             log.write ('Runtime error (%s).' % r.comment, end='\n', color=Log.ERROR)
@@ -732,10 +749,6 @@ def prepare_windows():
 
 
 class T:
-    class Error ( Exception ):
-        def __init__ ( self, comment ):
-            super (T.Error, self).__init__ (comment)
-
     def __init__ ( self, log, configuration ):
         self.__log = self.log = log
         self.__configuration = configuration
@@ -751,7 +764,7 @@ class T:
         problem.reconfigure ()
         build_problem (problem)
         if not check_problem (problem):
-            raise T.Error("problem check failed")
+            raise t.Error("problem check failed")
 
     def __check ( self, problem, arguments ):
         problem.reconfigure ()
@@ -768,7 +781,7 @@ class T:
         try:
             generator, solution = arguments[:2]
         except ValueError as error:
-            raise T.Error ("usage: t.py stress <generator> <solution>") from error
+            raise t.Error ("usage: t.py stress <generator> <solution>") from error
         generator, solution = [heuristic.Source.find (x) for x in (generator, solution)]
         r = True
         while r:
@@ -803,7 +816,7 @@ class T:
         try:
             action = actions[command]
         except KeyError as error:
-            raise T.Error ("unknown command: '%s'" % command) from error
+            raise t.Error ("unknown command: '%s'" % command) from error
         action (command, arguments[1:])
 
     def __explore ( self, recursive=None ):
@@ -811,7 +824,10 @@ class T:
             os.mkdir ('.temp')
         if recursive is None:
             recursive = self.__configuration['recursive']
-        self.__problems = [Problem.open (x, t=t) for x in find_problems ()] if recursive else [Problem.open (t=t)]
+        self.__problems = [
+            Problem.open (x, t=self) \
+                for x in find_problems ()] if recursive else [Problem.open (t=self)
+        ]
         for problem in self.__problems:
            if problem.uuid is None:
               problem.create ()
@@ -821,11 +837,13 @@ def arguments_parse():
     parser = argparse.ArgumentParser (description='t.py: programming contest problem helper')
     parser.add_argument ('--no-remove-tests', '-t', dest='remove_tests', action='store_false', default=True)
     parser.add_argument ('--recursive', '-r', dest='recursive', action='store_true', default=False)
+    parser.add_argument ('--verbose', '-v', dest='verbose', action='store_true', default=False)
     parser.add_argument ('command', nargs='+')
     args = parser.parse_args ()
     options = {
         'no-remove-tests': not args.remove_tests,
-        'recursive': args.recursive
+        'recursive': args.recursive,
+        'verbose': args.verbose
     }
     return options, args.command
 
@@ -841,10 +859,12 @@ global_config = configuration
 
 options, arguments = arguments_parse()
 
-t = T (log, options)
+tpy = T (log, options)
 try:
-    t (arguments)
-except T.Error as e:
+    if options['verbose']:
+        log.verbose ()
+    tpy (arguments)
+except t.Error as e:
     log.error (e)
     sys.exit (1)
 except KeyboardInterrupt:

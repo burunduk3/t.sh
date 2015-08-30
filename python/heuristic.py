@@ -1,5 +1,7 @@
 import os.path
 
+import common as t
+
 def detector_python( source ):
     with open (source, 'r') as f:
         shebang = f.readline ()
@@ -48,11 +50,11 @@ class Source:
         compiler = compilers[self.__compiler]
         self.__executable = compiler (self.__path)
         if self.__executable is None:
-           raise T.Error ("%s: compilation error" % executable)
-    def run ( self, *arguments, stdin=None, stdout=None, stderr=None ):
+           raise t.Error ("%s: compilation error" % self.__path)
+    def run ( self, *arguments, **kwargs ):
         if self.__executable is None:
             self.compile ()
-        return self.__executable (arguments, stdin=stdin, stdout=stdout, stderr=stderr)
+        return self.__executable (arguments, **kwargs)
     
     path = property (lambda self: self.__path)
     compiler = property (lambda self: self.__compiler)
