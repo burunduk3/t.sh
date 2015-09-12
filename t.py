@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf8 -*-
+#
+#    t.py: utility for contest problem development
+#    Copyright (C) 2009-2015 Oleg Davydov
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License along
+#    with this program; if not, write to the Free Software Foundation, Inc.,
+#    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
 
 import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
 import argparse
@@ -8,6 +26,7 @@ import traceback
 import common as t
 from problem import Problem
 import heuristic
+import help
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
@@ -802,6 +821,13 @@ class T:
         self.__problems = [problem]
         self.__log ('create problem #%s' % uuid)
 
+    def __help ( self, par='disclaimer' ):
+        sys.stdout.write ({
+            'disclaimer': help.disclaimer,
+            'gpl:c': help.license,
+            'gpl:w': help.warranty,
+        }[par])
+
     def __call__ ( self, arguments ):
         command = arguments[0]
         actions = {
@@ -814,7 +840,8 @@ class T:
             ]
         }
         actions.update ({
-            'problem:create': lambda command, args: self.__problem_create (*args)
+            'problem:create': lambda command, args: self.__problem_create (*args),
+            'help': lambda command, args: self.__help (*args)
         })
         try:
             action = actions[command]

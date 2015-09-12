@@ -1,1 +1,29 @@
-(most) actual version is python/t.py
+OVERVIEW
+
+t.py is a tool for making acm-style competitions.
+
+Historically it is clone of t.cmd used in IFMO, written by burunduk3 in 2009 as t.sh (yes, that was
+a bash script), then rewritten in python3.
+
+It works with problems: generates tests and make simple checking
+It is under development now (and forever), so use it on you own risk.
+
+copyright (c) Oleg Davydov, Yury Petrov
+
+This program is free sortware, under GPL, for great justice...
+
+DOWNLOAD
+
+Better way is to obtain t.py is github: https://github.com/burunduk3/t.sh
+
+INSTALLATION
+
+Currently t.py doesn't need some special files installed somewhere, but it is a python script with
+some modules. Be sure python will find them. I just make symlink t.py in some my $PATH to t.py file
+in git repository.
+
+FEEDBACK
+
+If you have any questions, comments or improvement ideas, write to
+ burunduk3@gmail.com (Oleg Davydov)
+
