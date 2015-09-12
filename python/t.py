@@ -551,9 +551,10 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
         solution.executable, limit_time=problem.limit_time,
         limit_idle=problem.limit_idle, limit_memory=problem.limit_memory
     )
-    for x in tests:
+    for i, x in enumerate (tests):
         test = x.create ()
-        log ('test [%s] ' % x, end='')
+        test_name = '#%02d' % (i + 1)
+        log ('test %s [%s] ' % (test_name, x), end='')
         shutil.copy (test, input_name)
         r = invoker.run (
             directory='.temp',
@@ -576,7 +577,7 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
         log.write ('* ')
         result = checker.run (input_name, output_name, test + '.a')
         if not result:
-            log ('Wrong answer on test %s.' % test, Log.ERROR, exit=False)
+            log ('Wrong answer on test %s.' % test_name, Log.ERROR, exit=False)
             return False
     return True
 
