@@ -29,13 +29,16 @@ class Problem (Datalog):
 
     class File (Type):
         class Std (Type):
+            def __init__ ( self, *, t ):
+               super (Problem.File.Std, self).__init__ (t=t)
             def __str__ ( self ):
                 return '<std>'
             def __eq__ ( self, x ):
                 return type (self) is type (x)
 
         class Name (Type):
-            def __init__ ( self, name ):
+            def __init__ ( self, name, *, t ):
+                super (Problem.File.Name, self).__init__ (t=t)
                 self.__name = name
             def __str__ ( self ):
                 return self.__name
@@ -45,15 +48,16 @@ class Problem (Datalog):
                 return self.__name == x.__name
 
         @classmethod
-        def std ( cls ):
-            return Problem.File.Std ()
+        def std ( cls, t ):
+            return Problem.File.Std (t=t)
         @classmethod
-        def name ( cls, name ):
-            return Problem.File.Name (name)
+        def name ( cls, name, t ):
+            return Problem.File.Name (name, t=t)
 
     class Generator (Type):
         class Auto (Type):
-            def __init__ ( self, problem ):
+            def __init__ ( self, problem, *, t):
+                super (Problem.Generator.Auto, self).__init__ (t=t)
                 self.__problem = problem
             def __str__ ( self ):
                 return '<automatic>'
@@ -62,7 +66,8 @@ class Problem (Datalog):
             def run ( self ):
                 return self.__problem.autogenerate ()
         class External (Type):
-            def __init__ ( self, problem, source, directory ):
+            def __init__ ( self, problem, source, directory, *, t ):
+                super (Problem.Generator.External, self).__init__ (t=t)
                 self.__problem = problem
                 self.__source = source
                 self.__directory = directory
@@ -79,11 +84,11 @@ class Problem (Datalog):
                 return self.__problem.autofind_tests (self.__directory)
         
         @classmethod
-        def auto ( cls, problem ):
-            return Problem.Generator.Auto (problem)
+        def auto ( cls, problem, *, t ):
+            return Problem.Generator.Auto (problem, t=t)
         @classmethod
-        def external ( cls, problem, source, directory ):
-            return Problem.Generator.External (problem, source, directory)
+        def external ( cls, problem, source, directory, *, t ):
+            return Problem.Generator.External (problem, source, directory, t=t)
 
 
     def __init__ ( self, datalog, *, create=False, t ):
@@ -136,16 +141,16 @@ class Problem (Datalog):
         self.__limit_memory = int (value)
         return True
     def __lev_input_std ( self ):
-        self.__input = Problem.File.std ()
+        self.__input = Problem.File.std (t=self._t)
         return True
     def __lev_input_name ( self, value ):
-        self.__input = Problem.File.name (value)
+        self.__input = Problem.File.name (value, t=self._t)
         return True
     def __lev_output_std ( self ):
-        self.__output = Problem.File.std ()
+        self.__output = Problem.File.std (t=self._t)
         return True
     def __lev_output_name ( self, value ):
-        self.__output = Problem.File.name (value)
+        self.__output = Problem.File.name (value, t=self._t)
         return True
     def __lev_checker ( self, path, compiler ):
         self.__checker = heuristic.Source (path, compiler)
@@ -154,11 +159,11 @@ class Problem (Datalog):
         self.__solution = heuristic.Source (path, compiler) # TODO: move Source outside of heuristic
         return True
     def __lev_generator_auto ( self ):
-        self.__generator = Problem.Generator.auto (self)
+        self.__generator = Problem.Generator.auto (self, t=self._t)
         return True
     def __lev_generator_external ( self, path, compiler, directory ):
         self.__generator = Problem.Generator.external (
-            self, heuristic.Source (path, compiler), directory
+            self, heuristic.Source (path, compiler), directory, t=self._t
         )
         return True
     def __lev_validator ( self, path, compiler ):
@@ -232,7 +237,7 @@ class Problem (Datalog):
     def __parse_file ( self, value ):
         if value in ('<std>', '<stdin>', '<stdout>'):
             return Problem.File.std ()
-        return Problem.File.name (value)
+        return Problem.File.name (value, t=self._t)
     def __parse_problem_properties ( self, filename ):
         with open (filename) as x:
             for line in x:

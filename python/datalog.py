@@ -1,8 +1,8 @@
 import time
 
 class Type:
-    def __init__ ( self ):
-        pass
+    def __init__ ( self, t ):
+        self._t = t
     def __str__ ( self ):
         assert False
     def dump ( self ):

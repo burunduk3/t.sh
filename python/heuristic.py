@@ -61,12 +61,14 @@ class Source:
     executable = property (lambda self: self.__executable)
 
     @classmethod
-    def find ( cls, path ):
+    def find ( cls, path, prefix=None ):
         for filename in [path + '.' + suffix for suffix in suffixes.keys ()]:
-            if os.path.isfile(filename):
+            if os.path.isfile (filename):
                 return cls (filename)
-        if os.path.isfile(path):
+        if os.path.isfile (path):
             return cls (path)
+        if prefix is not None:
+            return Source.find (prefix + '_' + path)
         return None
 
 
