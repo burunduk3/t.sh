@@ -30,20 +30,22 @@ class Type:
         assert False
 
 class Datalog:
+    class NotFound (Exception):
+        pass
+
     def __init__ ( self, datalog, actions={}, *, create=False, t ):
         self._t = t
         self._actions = actions
         self._time = 0
-        if not create:
-            try:
-                with open (datalog, 'r') as log:
-                    for line in log.readlines ():
-                        self.__event (line)
-            except FileNotFoundError:
-                self._t.log.warning ("file not found: '%s', create new" % datalog)
-            self.__datalog = open (datalog, 'a')
-        else:
-            self.__datalog = open (datalog, 'x')
+        try:
+            with open (datalog, 'r') as log:
+                for line in log.readlines ():
+                    self.__event (line)
+        except FileNotFoundError as error:
+            if not create:
+                raise Datalog.NotFound from error
+            self._t.log.warning ("file not found: '%s', create new" % datalog)
+        self.__datalog = open (datalog, 'a')
 
     def __precheck ( self, line ):
         data = line.split ()

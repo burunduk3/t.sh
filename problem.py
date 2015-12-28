@@ -30,6 +30,18 @@ from datalog import Datalog, Type
 import heuristic
 
 class Problem (Datalog):
+    @classmethod
+    def parse_memory ( self, value ):
+        for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
+            if value.endswith(suffix):
+                return int (value[0:-len (suffix)]) * multiplier
+        assert False
+    @classmethod
+    def parse_file ( self, value, *, t ):
+        if value in ('<std>', '<stdin>', '<stdout>'):
+            return Problem.File.std (t=t)
+        return Problem.File.name (value, t=t)
+
     LEV_CREATE = 'problem.create'
     LEV_NAME_SHORT = 'problem.name_short'
     LEV_LIMIT_TIME = 'problem.limit_time'
@@ -45,11 +57,10 @@ class Problem (Datalog):
     LEV_GENERATOR_EXT = 'problem.generator.external'
     LEV_VALIDATOR = 'problem.validator'
 
-
     class File (Type):
         class Std (Type):
             def __init__ ( self, *, t ):
-               super (Problem.File.Std, self).__init__ (t=t)
+                super (Problem.File.Std, self).__init__ (t=t)
             def __str__ ( self ):
                 return '<std>'
             def __eq__ ( self, x ):
@@ -72,6 +83,21 @@ class Problem (Datalog):
         @classmethod
         def name ( cls, name, t ):
             return Problem.File.Name (name, t=t)
+
+# TODO: for files copy
+# def convert_tests( tests ):
+#   log('convert tests', end='')
+#   for test in tests:
+#     log.write('.')
+#     p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
+#     p.communicate()
+#     if p.returncode != 0: log.warning('dos2unix failed on test %s' % test)
+#     if not os.path.isfile(test + '.a'):
+#       continue
+#     p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
+#     p.communicate()
+#     if p.returncode != 0: log.warning('dos2unix failed on file %s.a' % test)
+#   log.write('done\n')
 
     class Generator (Type):
         class Auto (Type):
@@ -100,15 +126,14 @@ class Problem (Datalog):
                 r = self.__source.run (directory=self.__directory)
                 if not r:
                     raise t.Error ('generator failed: %s' % self)
-                return self.__problem.autofind_tests (self.__directory)
-        
+                return self.__problem.autofind_tests ('tests')
+
         @classmethod
         def auto ( cls, problem, *, t ):
             return Problem.Generator.Auto (problem, t=t)
         @classmethod
         def external ( cls, problem, source, directory, *, t ):
             return Problem.Generator.External (problem, source, directory, t=t)
-
 
     def __init__ ( self, datalog, *, create=False, t ):
         self.__path = os.path.dirname (os.path.abspath (datalog))
@@ -142,7 +167,7 @@ class Problem (Datalog):
             Problem.LEV_CHECKER: lambda path, compiler: self.__lev_checker (path, compiler),
             Problem.LEV_SOLUTION: lambda path, compiler: self.__lev_solution (path, compiler),
             Problem.LEV_GENERATOR_AUTO: lambda: self.__lev_generator_auto (),
-            Problem.LEV_GENERATOR_EXT: lambda path, compiler, directory: \
+            Problem.LEV_GENERATOR_EXT: lambda path, compiler, directory:
                 self.__lev_generator_external (path, compiler, directory),
             Problem.LEV_VALIDATOR: lambda path, compiler: self.__lev_validator (path, compiler)
         }
@@ -188,6 +213,22 @@ class Problem (Datalog):
     def __lev_validator ( self, path, compiler ):
         self.__validator = heuristic.Source (path, compiler)
         return True
+
+    def canonical ( self, routine ):
+        fields = [
+            ('name', lambda: self.name_short, self.__set_name_short, None),
+            ('input', lambda: self.input, self.__set_input, lambda: self.__set_input_std ()),
+            ('output', lambda: self.output, self.__set_output, lambda: self.__set_output_std ()),
+            ('time limit', lambda: self.limit_time, self.__set_limit_time, None),
+            ('idle limit', lambda: self.limit_idle, self.__set_limit_idle, None),
+            ('memory limit', lambda: self.limit_memory, self.__set_limit_memory, None),
+            ('solution', lambda: self.solution, self.__set_solution, None),
+            ('generator', lambda: self.generator, self.__set_generator_external, self.__autodetect_generator),
+            ('validator', lambda: self.validator, self.__set_validator, self.__autodetect_validator),
+            ('checker', lambda: self.checker, self.__set_checker, self.__autodetect_checker)
+        ]
+        for args in fields:
+            routine (*args)
 
     def create ( self, uuid=None ):
         if uuid is None:
@@ -248,31 +289,7 @@ class Problem (Datalog):
     name = property (lambda self: self.__name_short if self.__name_short is not None else self.__uuid)
     tests = property (lambda self: self.__tests)
 
-    def __parse_memory ( self, value ):
-        for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
-            if value.endswith(suffix):
-                return int(value.replace(suffix, '')) * multiplier
-        assert False
-    def __parse_file ( self, value ):
-        if value in ('<std>', '<stdin>', '<stdout>'):
-            return Problem.File.std ()
-        return Problem.File.name (value, t=self._t)
-    def __parse_problem_properties ( self, filename ):
-        with open (filename) as x:
-            for line in x:
-                key, value = [token.strip() for token in line.split('=', 1)]
-                if value[0] == '"' and value[-1] == '"':
-                    value = value[1:-1]
-                yield key, value
-    def __find_solution ( self, token ):
-        result = heuristic.Source.find (token)
-        if result is not None:
-            return result
-        result = heuristic.Source.find (self.__name_short + '_' + token)
-        if result is not None:
-            return result
-        return None
-
+    # TODO: move autogenerators into heurisctic
     def __autodetect_generator ( self ):
         # TODO:
         #    if 'generator' in problem_configuration:
@@ -284,6 +301,8 @@ class Problem (Datalog):
                 continue
             return self.__set_generator_external (generator, '.')
         directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
         if not os.path.isdir (directory):
             directory = 'tests'
         # self._t.log.debug ('directory: "%s"' % directory)
@@ -299,6 +318,8 @@ class Problem (Datalog):
 
     def __autodetect_validator ( self ):
         directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
         if not os.path.isdir (directory):
             directory = 'tests'
         if not os.path.isdir (directory):
@@ -318,66 +339,8 @@ class Problem (Datalog):
         if checker is None:
             return None
         return self.__set_checker (checker)
-  # if checker.name == 'Check.java':
-  #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. ru.ifmo.testlib.CheckerFramework Check"
-
-    def reconfigure ( self ):
-        os.chdir (self.__path)
-        defaults = [
-            ('name', lambda: self.name_short, lambda: self.__set_name_short (os.path.basename (self.__path))),
-            ('input', lambda: self.input, lambda: self.__set_input_std ()),
-            ('output', lambda: self.output, lambda: self.__set_output_std ()),
-            ('time limit', lambda: self.limit_time, lambda: self.__set_limit_time (5.0)),
-            ('idle limit', lambda: self.limit_idle, lambda: self.__set_limit_idle (10.0)),
-            ('memory limit', lambda: self.limit_memory, lambda: self.__set_limit_memory (768 * 2**20)), # 768 MiB
-        ]
-        for name, key, setter in defaults:
-            if key () is not None:
-                continue
-            setter ()
-            self._t.log.warning ("%s isn't set for problem '%s', use default (%s)" % (
-                name, self.name_short if self.name_short is not None else self.uuid, key ()
-            ))
-        pp_file = 'problem.properties'
-        if os.path.isfile (pp_file):
-            pp_morph = {
-                'time-limit': (lambda: self.limit_time, self.__set_limit_time, lambda x: float (x)),
-                'idle-limit': (lambda: self.limit_idle, self.__set_limit_idle, lambda x: float (x)),
-                'memory-limit': (lambda: self.limit_memory, self.__set_limit_memory, lambda x: self.__parse_memory (x)),
-                'input-file': (lambda: self.input, self.__set_input, lambda x: self.__parse_file (x)),
-                'output-file': (lambda: self.output, self.__set_output, lambda x: self.__parse_file (x)),
-                'solution': (lambda: self.solution, self.__set_solution, lambda x: self.__find_solution (x))
-                # TODO: configure checker, validator…
-  #if 'checker' in problem_configuration:
-  #  checker_name = problem_configuration['checker']
-  #  if checker_name.startswith('testlib/'):
-  #    # TODO: configure checker path somewhere
-  #    checker_name = '/home/burunduk3/code/testlib-ro/trunk/checkers/' + checker_name[8:] + '.cpp'
-  #  checker = find_source(checker_name)
-            }
-            for key, value in self.__parse_problem_properties (pp_file):
-                try:
-                    getter, setter, modifier = pp_morph[key]
-                except KeyError:
-                    self._t.log.warning ('[%s]: ignored option: %s' % (pp_file, key))
-                    continue
-                value = modifier (value)
-                if value == getter ():
-                    continue
-                self._t.log ('[%s]: set %s to %s' % (pp_file, key, value))
-                setter (value)
-        # TODO: scan problem.xml
-        detectors = [
-            ('generator', lambda: self.generator, lambda: self.__autodetect_generator ()),
-            ('validator', lambda: self.validator, lambda: self.__autodetect_validator ()),
-            ('checker', lambda: self.checker, lambda: self.__autodetect_checker ())
-        ]
-        for name, key, setter in detectors:
-            if key () is not None:
-                continue
-            if not setter ():
-                continue
-            self._t.log.notice ("[problem %s]: found %s: %s" % (self.name, name, key ()))
+        # if checker.name == 'Check.java':
+        #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. ru.ifmo.testlib.CheckerFramework Check"
 
     def cleanup ( self ):
         if not os.path.isdir ('.tests'):
@@ -388,6 +351,8 @@ class Problem (Datalog):
             os.remove (os.path.join ('.tests', filename))
     def autogenerate ( self ):
         directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
         if not os.path.isdir (directory):
             directory = 'tests'
         if not os.path.isdir (directory):
@@ -405,7 +370,7 @@ class Problem (Datalog):
             else:
                 generator = heuristic.Source.find ('do' + test)
                 if generator is None:
-                    generator = heuristic.Source.find ('gen' + test) 
+                    generator = heuristic.Source.find ('gen' + test)
                 if generator is None:
                     continue
                 result = generator.run (stdout=open (target, 'w'))
@@ -437,21 +402,16 @@ class Problem (Datalog):
                 break
             self.__tests.append (x)
 
-  #if 'source-directory' not in configuration:
-  #    for directory in ['source', 'src', 'tests']:
-  #      if os.path.isdir(os.path.join(path, directory)):
-  #        configuration.update({'source-directory': os.path.join(path, directory)})
-  #        break
-  #if 'tests-directory' not in configuration:
-  #    configuration.update({'tests-directory': os.path.join(path, 'tests')})
-  #return configuration
-
+        # if 'source-directory' not in configuration:
+        #    for directory in ['source', 'src', 'tests']:
+        #      if os.path.isdir(os.path.join(path, directory)):
+        #        configuration.update({'source-directory': os.path.join(path, directory)})
+        #        break
+        # if 'tests-directory' not in configuration:
+        #    configuration.update({'tests-directory': os.path.join(path, 'tests')})
+        # return configuration
 
     @classmethod
     def new ( self, datalog='.datalog', *, t ):
         return Problem (datalog, create=True, t=t)
-
-    @classmethod
-    def open ( self, path=os.path.abspath ('.'), datalog='.datalog', *, t):
-        return Problem (os.path.join (path, datalog), t=t)
 

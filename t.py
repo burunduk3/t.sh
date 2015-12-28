@@ -19,7 +19,16 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import os, re, shutil, subprocess, sys, threading, time, json, base64, socket
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import json
+import base64
+import socket
 import argparse
 import traceback
 
@@ -27,6 +36,7 @@ import common as t
 from problem import Problem
 import heuristic
 import help
+import legacy
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
@@ -44,7 +54,7 @@ def compilers_configure():
             nonlocal interpeter
             return Executable (binary, [interpeter])
         return result
-    
+
     executable_default = lambda binary: Executable (binary)
     binary_default = lambda source: os.path.splitext(source)[0]
 
@@ -62,51 +72,51 @@ def compilers_configure():
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
     configuration.compilers = {
-        'bash': Compiler ('bash', executable = script ('bash')),
-        'perl': Compiler ('perl', executable = script ('perl')),
-        'python2': Compiler ('python2', executable = script ('python2')),
-        'python3': Compiler ('python3', executable = script ('python3')),
+        'bash': Compiler ('bash', executable=script ('bash')),
+        'perl': Compiler ('perl', executable=script ('perl')),
+        'python2': Compiler ('python2', executable=script ('python2')),
+        'python3': Compiler ('python3', executable=script ('python3')),
         'c': Compiler ('c',
-            binary = binary_default,
-            command = lambda source,binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source],
-            executable = executable_default
+            binary=binary_default,
+            command=lambda source, binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source],
+            executable=executable_default
         ),
         'c++': Compiler ('c++',
-            binary = binary_default,
-            command = lambda source,binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source],
-            executable = executable_default
+            binary=binary_default,
+            command=lambda source, binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source],
+            executable=executable_default
         ),
         'delphi': Compiler ('delphi',
-            binary = binary_default,
-            command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source],
-            # command = lambda source,binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
-            executable = executable_default
+            binary=binary_default,
+            command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source],
+            # command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
+            executable=executable_default
         ),
         'java': Compiler ('java',
-            binary = lambda source: os.path.splitext(source)[0] + '.class',
-            command = lambda source,binary: ['javac', '-cp', os.path.dirname(source), source],
-            executable = lambda binary: Executable (binary, [
+            binary=lambda source: os.path.splitext(source)[0] + '.class',
+            command=lambda source, binary: ['javac', '-cp', os.path.dirname(source), source],
+            executable=lambda binary: Executable (binary, [
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
-                '-cp', os.path.dirname(binary) + java_cp_suffix,
-                os.path.splitext(os.path.basename(binary))[0]
+                '-cp', os.path.dirname (binary) + java_cp_suffix,
+                os.path.splitext (os.path.basename (binary))[0]
             ], add=False)
         ),
         'java.checker': Compiler ('java',
-            binary = lambda source: os.path.splitext(source)[0] + '.class',
-            command = lambda source,binary: ['javac', '-cp', os.path.dirname(source), source],
-            executable = lambda binary: Executable (binary, [
+            binary=lambda source: os.path.splitext(source)[0] + '.class',
+            command=lambda source, binary: ['javac', '-cp', os.path.dirname (source), source],
+            executable=lambda binary: Executable (binary, [
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
                 "-cp", os.path.dirname(binary) + java_cp_suffix,
-                "ru.ifmo.testlib.CheckerFramework", os.path.splitext(os.path.basename(binary))[0]
+                "ru.ifmo.testlib.CheckerFramework", os.path.splitext (os.path.basename (binary))[0]
             ], add=False)
         ),
         'pascal': Compiler ('pascal',
-            binary = binary_default,
-            command = lambda source,binary: [
+            binary=binary_default,
+            command=lambda source, binary: [
                 'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
                 '-d__T_SH__', '-o'+binary, source
             ],
-            executable = executable_default
+            executable=executable_default
         ),
     }
     heuristic.set_compilers (configuration.compilers)
@@ -135,23 +145,23 @@ def compilers_configure():
 
 # === PARTS OF t.sh ===
 
-## GCC flags
-#gccVersionString=`gcc --version | head -n 1`
-#gccVersion=${gccVersionString##* }
-#gccVersionMajor=${gccVersion##*.}
-#if [ $gccVersionMajor == "4" ] ; then
-#  CFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
-#else
-#  CFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
-#fi
-#CXXFLAGS="${CFLAGS}"
-## End of GCC flags
-#BINARY_SUFFIX=""
-#if [ "$OPERATION_SYSTEM" != "Linux" ]; then
-#  CFLAGS="$CFLAGS -Wl,--stack=134217728"
-#  CXXFLAGS="$CXXFLAGS -Wl,--stack=134217728"
-#  BINARY_SUFFIX=".exe"
-#fi
+# # GCC flags
+# gccVersionString=`gcc --version | head -n 1`
+# gccVersion=${gccVersionString##* }
+# gccVersionMajor=${gccVersion##*.}
+# if [ $gccVersionMajor == "4" ] ; then
+#   CFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
+# else
+#   CFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
+# fi
+# CXXFLAGS="${CFLAGS}"
+# # End of GCC flags
+# BINARY_SUFFIX=""
+# if [ "$OPERATION_SYSTEM" != "Linux" ]; then
+#   CFLAGS="$CFLAGS -Wl,--stack=134217728"
+#   CXXFLAGS="$CXXFLAGS -Wl,--stack=134217728"
+#   BINARY_SUFFIX=".exe"
+# fi
 
 class Log:
   DEBUG, INFO, NOTICE, WARNING, ERROR, FATAL = range(6)
@@ -166,7 +176,7 @@ class Log:
     self.error = lambda text: self(text, Log.ERROR)
     self.fatal = lambda text: self(text, Log.FATAL)
     pass
-  def __call__( self, message, level = INFO, *, exit=None, end='\n', verbose=False ):
+  def __call__( self, message, level=INFO, *, exit=None, end='\n', verbose=False ):
     if verbose and not self.__verbose:
         return
     if verbose:
@@ -174,7 +184,9 @@ class Log:
     else:
         self.write ("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
     exit = exit if exit is not None else level >= Log.ERROR
-    if exit: sys.exit(1)
+    if exit:
+        # TODO: remove this
+        sys.exit(1)
   def verbose ( self ):
       self.__verbose = True
   def write( self, message, end='', color=None ):
@@ -185,6 +197,7 @@ class Log:
 
 
 class Configuration:
+  # TODO: remove this somehow
   def __init__( self ):
     self.compilers = {}
     self.detector = {}
@@ -192,9 +205,11 @@ class Configuration:
     if source.endswith('Check.java'):
         return self.compilers["java.checker"]
     suffix = os.path.splitext(source)[1][1:]
-    if suffix not in self.detector: return None
+    if suffix not in self.detector:
+      return None
     detector = self.detector[suffix]
-    if type(detector) == str: return self.compilers[detector]
+    if type(detector) == str:
+      return self.compilers[detector]
     return self.compilers[detector(source)]
 
 
@@ -221,7 +236,8 @@ class Compiler:
       log ('$ %s' % (' '.join (command)), verbose=True)
       process = subprocess.Popen(command)
       process.communicate()
-      if process.returncode != 0: return None
+      if process.returncode != 0:
+        return None
     compile_cache[source] = self.executable(binary)
     return compile_cache[source]
 
@@ -232,7 +248,8 @@ class Executable:
     directory = '.' if directory == '' else directory
     path = os.path.join(directory, filename)
     self.path, self.command = path, list(command)
-    if add: self.command.append(self.path)
+    if add:
+      self.command.append(self.path)
   def __str__( self ):
     return self.path
   def __call__( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
@@ -244,7 +261,7 @@ class Executable:
 
 class RunResult:
   RUNTIME, TIME_LIMIT, MEMORY_LIMIT, OK = range(4)
-  def __init__( self, result, exitcode, comment = '' ):
+  def __init__( self, result, exitcode, comment='' ):
     self.result, self.exitcode, self.comment = result, exitcode, comment
 
 class Invoker:
@@ -316,33 +333,9 @@ class Invoker:
             return RunResult(RunResult.OK, code)
 
 
-def find_problems( base = '.' ):
-  queue = [os.path.abspath(base)]
-  for path in queue:
-    if not os.path.isdir(path): continue;
-    if os.path.exists(os.path.join(path, 'tests')) or os.path.exists(os.path.join(path, 'source')) or os.path.exists(os.path.join(path, 'src')):
-      yield path
-    else:
-      queue += [os.path.join(path, x) for x in sorted(os.listdir(path))]
-
 def find_source( path ):
     global suffixes
     return heuristic.Source (suffixes).find (path)
-
-def find_tests( path = '.' ):
-  for filename in sorted(os.listdir(path)):
-    if not re.match('^\d{2,3}$', filename): continue
-    if not os.path.isfile(os.path.join(path, filename)): continue
-    yield filename
-
-def find_solution( path, token, problem ):
-  result = find_source(os.path.join(path, token))
-  if result is not None: return result
-  result = find_source(os.path.join(path, problem + '_' + token))
-  if result is not None: return result
-  # В t.sh был ещё один случай: когда мы выбираем файл c именем <problem>_<token>, но не делаем find_source.
-  # Я пока не буду это здесь повторять, потому что не могу придумать случай, когда это нужно.
-  return None
 
 
 def read_problem_properties( filename ):
@@ -353,49 +346,6 @@ def read_problem_properties( filename ):
       value = value[1:-1]
     result[key] = value
   return result
-
-def read_configuration( path ):
-  problem_name = os.path.basename(os.path.abspath(path))
-  configuration = {'path': path, 'id': problem_name}
-  ppfile = os.path.join(path, 'problem.properties')
-  if os.path.isfile(ppfile):
-    configuration.update(read_problem_properties(ppfile))
-  for name, value in [
-    ('input-file', problem_name + '.in'),
-    ('output-file', problem_name + '.out'),
-    ('time-limit', 5.0),
-    ('memory-limit', 768 * 2**20)
-  ]:
-    if name in configuration: continue
-    log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['id'], repr(value)))
-    configuration[name] = value
-  configuration['time-limit'] = float(configuration['time-limit'])
-  for name in ['memory-limit']:
-    for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
-      if isinstance(configuration[name], str) and configuration[name].endswith(suffix):
-        configuration[name] = int(configuration[name].replace(suffix, '')) * multiplier
-  if 'source-directory' not in configuration:
-      for directory in ['source', 'src', 'tests']:
-        if os.path.isdir(os.path.join(path, directory)):
-          configuration.update({'source-directory': os.path.join(path, directory)})
-          break
-  if 'tests-directory' not in configuration:
-      configuration.update({'tests-directory': os.path.join(path, 'tests')})
-  return configuration
-
-def convert_tests( tests ):
-  log('convert tests', end='')
-  for test in tests:
-    log.write('.')
-    p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
-    p.communicate()
-    if p.returncode != 0: log.warning('dos2unix failed on test %s' % test)
-    if not os.path.isfile(test + '.a'):
-      continue
-    p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
-    p.communicate()
-    if p.returncode != 0: log.warning('dos2unix failed on file %s.a' % test)
-  log.write('done\n')
 
 def just_run( source, stdin=None, stdout=None ):
   global configuration, log
@@ -472,8 +422,6 @@ def build_problem ( problem ):
     result = generator.run ()
     if not result:
         raise t.Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
-  #if 'source-directory' not in problem_configuration: log.error('No source directory defined for problem %s.' % problem_name)
-  ##
     problem.research_tests ()
     if not problem.tests:
         raise t.Error ('[problem %s]: no tests found' % problem.name)
@@ -489,7 +437,6 @@ def build_problem ( problem ):
                 continue
             raise t.Error('[problem %s]: validation failed: %s' % (problem.name, test))
         log.write('done\n')
-  #os.chdir(problem_configuration['tests-directory'])
     testset_answers (problem)
 
 
@@ -511,7 +458,7 @@ class Test:
             self.__type = Test.FILE
         else:
             raise Exception ("failed to create test: unknown type")
-    
+
     def __str__ ( self ):
         return self.__name
 
@@ -531,7 +478,7 @@ class Test:
             log.error('generator (%s) failed' % self.__generator)
             return None
         return path
-    
+
     @classmethod
     def file ( self, path, problem=None, name=None ):
         return Test (problem, path=path, name=name)
@@ -621,7 +568,7 @@ class WolfConnection:
                 self.__tail = x
             self.__queue = iter(queue)
 
-def wolf_export( configuration ):
+def wolf_export( problem ):
     log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
@@ -629,7 +576,8 @@ def wolf_export( configuration ):
     checker = None
     for checker_name in ['check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']]:
         checker = find_source(os.path.join('..', checker_name))
-        if checker is not None: break
+        if checker is not None:
+            break
     if checker is None:
         log.error('cannot find checker')
     wolf_compilers = {
@@ -640,8 +588,9 @@ def wolf_export( configuration ):
     }
     checker_name = os.path.basename(checker)
     compiler = wolf_compilers[global_config.detect_language(checker).name]
-    tests = list(find_tests(configuration['tests-directory']))
-    if not tests: log.error('no tests found in %s' % configuration['tests-directory'])
+    tests = [Test.file (x) for x in problem.tests]
+    if not tests:
+        raise T.Error('problem %s: no tests found' % problem)
     log('  name: %s' % configuration['id'])
     log('  full name: %s' % configuration['full'])
     log('  input file: %s' % configuration['input-file'])
@@ -713,37 +662,38 @@ def clean_problem ( problem ):
             os.rmdir (directory)
 
 def prepare():
-  import resource as r, signal as s
+  import resource as r
+  import signal as s
   global resource, signal
   resource, signal = r, s
-  resource.setrlimit(resource.RLIMIT_STACK, (-1, -1)) # 
+  resource.setrlimit(resource.RLIMIT_STACK, (-1, -1))
 
 def prepare_windows():
   # Это выглядит как мерзкий, грязный хак, каковым является вообще любая работа с windows.
   import ctypes
 
   STD_INPUT_HANDLE = -10
-  STD_OUTPUT_HANDLE= -11
+  STD_OUTPUT_HANDLE = -11
   STD_ERROR_HANDLE = -12
 
   FOREGROUND_BLUE = 0x01
-  FOREGROUND_GREEN= 0x02
-  FOREGROUND_RED  = 0x04
+  FOREGROUND_GREEN = 0x02
+  FOREGROUND_RED = 0x04
   FOREGROUND_INTENSITY = 0x08
   BACKGROUND_BLUE = 0x10
-  BACKGROUND_GREEN= 0x20
-  BACKGROUND_RED  = 0x40
+  BACKGROUND_GREEN = 0x20
+  BACKGROUND_RED = 0x40
   BACKGROUND_INTENSITY = 0x80
   windows_colors = [
-    0, # black
-    FOREGROUND_RED, # red
-    FOREGROUND_GREEN, #green
-    FOREGROUND_GREEN|FOREGROUND_RED, # brown
-    FOREGROUND_BLUE, # blue
-    FOREGROUND_BLUE|FOREGROUND_RED, # magenta
-    FOREGROUND_BLUE|FOREGROUND_GREEN, # skyblue
-    FOREGROUND_BLUE|FOREGROUND_GREEN|FOREGROUND_RED, # gray
-    0,0,0
+      0, # black
+      FOREGROUND_RED, # red
+      FOREGROUND_GREEN, # green
+      FOREGROUND_GREEN | FOREGROUND_RED, # brown
+      FOREGROUND_BLUE, # blue
+      FOREGROUND_BLUE | FOREGROUND_RED, # magenta
+      FOREGROUND_BLUE | FOREGROUND_GREEN, # skyblue
+      FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED, # gray
+      0, 0, 0
   ]
   def windows_write( text, end='' ):
     text += end
@@ -756,9 +706,12 @@ def prepare_windows():
       numbers = [int(x) for x in color.split(';')]
       mask = 0
       for x in numbers:
-        if x == 0: mask |= windows_colors[7]
-        if x == 1: mask |= FOREGROUND_INTENSITY
-        if 30 <= x <= 39: mask |= windows_colors[x - 30]
+        if x == 0:
+          mask |= windows_colors[7]
+        if x == 1:
+          mask |= FOREGROUND_INTENSITY
+        if 30 <= x <= 39:
+          mask |= windows_colors[x - 30]
       ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
       sys.stdout.write(line.encode('utf8').decode('ibm866'))
       sys.stdout.flush()
@@ -773,7 +726,7 @@ class T:
         self.__log = self.log = log
         self.__configuration = configuration
         self.__problems = None
-    
+
     def __foreach ( self, action ):
         if self.__problems is None:
             self.__explore ()
@@ -781,13 +734,11 @@ class T:
             action (problem)
 
     def __build ( self, problem, arguments ):
-        problem.reconfigure ()
         build_problem (problem)
         if not check_problem (problem):
             raise t.Error ("problem check failed")
 
     def __check ( self, problem, arguments ):
-        problem.reconfigure ()
         solution = None
         if len(arguments) >= 1:
             solution = heuristic.Source.find (arguments[0], problem.name_short)
@@ -799,7 +750,6 @@ class T:
         clean_problem (problem)
 
     def __stress ( self, problem, arguments ):
-        problem.reconfigure ()
         try:
             generator, solution = arguments[:2]
         except ValueError as error:
@@ -810,9 +760,9 @@ class T:
             r = check_problem (problem, solution=solution, tests=[
                 Test.generate (generator, problem=problem, name='<stress>')
             ], quiet=True )
-    
+
     def __wolf_export ( self, problem, arguments ):
-        problem_configuration = read_configuration (problem)
+        problem_configuration = legacy.read_configuration (problem)
         wolf_export(problem_configuration)
 
     def __problem_create ( self, uuid=None ):
@@ -850,14 +800,14 @@ class T:
         action (command, arguments[1:])
 
     def __explore ( self, recursive=None ):
-        if not os.path.isdir ('.temp'):
-            os.mkdir ('.temp')
         if recursive is None:
             recursive = self.__configuration['recursive']
-        self.__problems = [
-            Problem.open (x, t=self) \
-                for x in find_problems ()] if recursive else [Problem.open (t=self)
-        ]
+        if recursive:
+            self.__problems = list (heuristic.find_problems (t=self))
+        else:
+            self.__problems = [heuristic.problem_open (t=self)]
+        if not os.path.isdir ('.temp'):
+            os.mkdir ('.temp')
         for problem in self.__problems:
            if problem.uuid is None:
               problem.create ()
