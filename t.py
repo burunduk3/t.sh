@@ -414,6 +414,8 @@ def build_problem ( problem ):
             continue
         log ('  * %s: %s' % (name, value))
     os.chdir (path)
+    if not os.path.isdir ('.temp'):
+        os.mkdir ('.temp')
     if problem.solution is None:
         log.warning('No solution defined for problem %s.' % problem.name)
     problem.cleanup ()
@@ -487,6 +489,29 @@ class Test:
     def generate ( self, generator, problem=None, name=None ):
         return Test (problem, generator=generator, name=name)
 
+
+def tests_export ( problem ):
+    os.chdir (problem.path)
+    if not problem.tests:
+        problem.research_tests ()
+    tests = [Test.file (x) for x in problem.tests]
+    if not tests:
+        raise t.Error ('[problem %s]: no tests found' % problem.name)
+    if not os.path.isdir ('tests'):
+        os.mkdir ('tests')
+    pattern = '%02d'
+    if len (tests) >= 100:
+        pattern = '%03d'
+    if len (tests) >= 1000:
+        raise t.Error ("[problem %s]: too many tests (%d)" % (problem.name, len (tests)))
+    n = 0
+    for i, x in enumerate (tests):
+        test = x.create ()
+        name = pattern % (i + 1)
+        shutil.copy (test, os.path.join ('tests', name))
+        shutil.copy (test + '.a', os.path.join ('tests', name) + '.a')
+        n += 1
+    log ('pattern: %s, tests copied: %d' % (pattern, n))
 
 def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
     global log
@@ -641,8 +666,10 @@ def clean_problem ( problem ):
         if not os.path.isdir (directory):
             continue
         for filename in os.listdir (directory):
-            if re.match ('^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename) or \
-               filename in ("input", "output"):
+            ok = re.match ('^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename)
+            ok = ok or re.match('^\d+(.a)?$', filename)
+            ok = ok or filename in ("input", "output")
+            if ok:
                os.remove (os.path.join (directory, filename))
             for suffix in suffixes:
                 if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
@@ -761,6 +788,9 @@ class T:
                 Test.generate (generator, problem=problem, name='<stress>')
             ], quiet=True )
 
+    def __tests ( self, problem, arguments ):
+        tests_export (problem)
+
     def __wolf_export ( self, problem, arguments ):
         problem_configuration = legacy.read_configuration (problem)
         wolf_export(problem_configuration)
@@ -786,6 +816,7 @@ class T:
                 ('check', self.__check),
                 ('clean', self.__clean),
                 ('stress', self.__stress),
+                ('tests', self.__tests),
                 ('wolf:export', self.__wolf_export)
             ]
         }
@@ -806,8 +837,6 @@ class T:
             self.__problems = list (heuristic.find_problems (t=self))
         else:
             self.__problems = [heuristic.problem_open (t=self)]
-        if not os.path.isdir ('.temp'):
-            os.mkdir ('.temp')
         for problem in self.__problems:
            if problem.uuid is None:
               problem.create ()

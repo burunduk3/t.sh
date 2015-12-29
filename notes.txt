@@ -14,3 +14,9 @@
 
 TODO:
   команды reset и rescan
+  экспорт (хотя бы .tests -> tests/%0*d), желательно ещё конфиги ejudge для
+контеста
+  команды set <всякая ерунда> чтобы не использовать problem.properties без
+необходимости
+  модули (вроде распаковки test.7z какой-нибудь понятной структуры)
+  починить t.py -r build (на ~/lksh/2015/03-winter/lksh-2015-winter-as/day03.casino/problems/)
