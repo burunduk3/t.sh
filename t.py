@@ -40,23 +40,6 @@ from invoker import Invoker, RunResult
 #  2010-11-17 [burunduk3] work started
 
 
-class Configuration:
-  # TODO: remove this somehow
-  def __init__( self ):
-    self.compilers = {}
-    self.detector = {}
-  def detect_language( self, source ):
-    if source.endswith('Check.java'):
-        return self.compilers["java.checker"]
-    suffix = os.path.splitext(source)[1][1:]
-    if suffix not in self.detector:
-      return None
-    detector = self.detector[suffix]
-    if type(detector) == str:
-      return self.compilers[detector]
-    return self.compilers[detector(source)]
-
-
 
 def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     global log
@@ -297,7 +280,7 @@ class WolfConnection:
                 self.__tail = x
             self.__queue = iter(queue)
 
-def wolf_export( problem ):
+def wolf_export( problem, configuration, global_config ):
     log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
@@ -454,10 +437,11 @@ def prepare_windows():
 
 
 class T:
-    def __init__ ( self, log, configuration ):
+    def __init__ ( self, log, configuration, legacy ):
         self.__log = self.log = log
         self.__configuration = configuration
         self.__problems = None
+        self.__legacy = legacy
 
     def __foreach ( self, action ):
         if self.__problems is None:
@@ -497,8 +481,8 @@ class T:
         tests_export (problem)
 
     def __wolf_export ( self, problem, *arguments ):
-        problem_configuration = legacy.read_configuration (problem)
-        wolf_export(problem_configuration)
+        problem_configuration = self.__legacy.read_configuration (problem)
+        wolf_export (problem, problem_configuration, self.__legacy)
 
     def __problem_create ( self, uuid=None ):
         problem = Problem.new ()
@@ -581,11 +565,10 @@ if sys.platform == 'win32': # if os is outdated
 options, arguments = arguments_parse()
 
 log = t.Log()
-configuration = Configuration()
 prepare()
-global_config = configuration
 
-tpy = T (log, options)
+configuration = legacy.Configuration()
+tpy = T (log, options, configuration)
 compilers_configure ( configuration, tpy )
 
 try:

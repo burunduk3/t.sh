@@ -83,7 +83,7 @@ def compilers_configure ( configuration, t ):
     flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
-    configuration.compilers = {
+    compilers = {
         'bash': Compiler ('bash', executable=script ('bash'), t=t),
         'perl': Compiler ('perl', executable=script ('perl'), t=t),
         'python2': Compiler ('python2', executable=script ('python2'), t=t),
@@ -137,7 +137,12 @@ def compilers_configure ( configuration, t ):
             t=t
         ),
     }
-    heuristic.set_compilers (configuration.compilers)
+    heuristic.set_compilers (compilers)
+
+    if configuration is None:
+        return
+
+    configuration.compilers = compilers
 
     def detector_python( source ):
         with open (source, 'r') as f:
@@ -157,6 +162,5 @@ def compilers_configure ( configuration, t ):
         'pas': 'pascal', 'dpr': 'delphi',
         'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
     }
-    suffixes = configuration.detector.keys()
 
 
