@@ -22,10 +22,7 @@
 import os
 import re
 import shutil
-import subprocess
 import sys
-import threading
-import time
 import json
 import base64
 import socket
@@ -37,6 +34,7 @@ import heuristic
 import help
 import legacy
 from compilers import compilers_configure
+from invoker import Invoker, RunResult
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
@@ -57,80 +55,6 @@ class Configuration:
     if type(detector) == str:
       return self.compilers[detector]
     return self.compilers[detector(source)]
-
-
-class RunResult:
-  RUNTIME, TIME_LIMIT, MEMORY_LIMIT, OK = range(4)
-  def __init__( self, result, exitcode, comment='' ):
-    self.result, self.exitcode, self.comment = result, exitcode, comment
-
-class Invoker:
-    def __init__( self, executable, *, limit_time, limit_idle, limit_memory ):
-        self.__executable = executable
-        self.__limit_time = limit_time
-        self.__limit_idle = limit_idle
-        self.__limit_memory = limit_memory
-        self.__process = None
-        self.__condition = None
-
-    def __waiter( self ):
-        self.__process.communicate()
-        self.__condition.acquire()
-        self.__condition.notify()
-        self.__condition.release()
-
-    def run( self, *, directory=None, stdin=None, stdout=None, stderr=None ):
-        global log
-    # limit resources of current process: bad idea
-    # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
-    # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
-        start = time.time ()
-        self.__process = subprocess.Popen (
-            self.__executable.command, cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
-        )
-        pid = self.__process.pid
-        self.__condition = threading.Condition()
-        thread = threading.Thread(target=self.__waiter)
-        # wait, what?
-        thread.start()
-        force_result = None
-        while True:
-            self.__condition.acquire()
-            self.__condition.wait(0.01)
-            self.__condition.release()
-            if self.__process.returncode is not None:
-                break
-            try: # так может случится, что процесс завершится в самый интересный момент
-                stat = open("/proc/%d/stat" % pid, 'r')
-                stats = stat.readline().split()
-                stat.close()
-                stat = open("/proc/%d/statm" % pid, 'r')
-                stats_m = stat.readline().split()
-                stat.close()
-                cpu_time = (int(stats[13]) + int(stats[14])) / os.sysconf (os.sysconf_names['SC_CLK_TCK'])
-                mem_usage = int(stats_m[0]) * 1024
-                line = "%.3f" % (time.time() - start)
-                line = line + '\b' * len(line)
-                log (line, prefix=False, end='')
-                if cpu_time > self.__limit_time:
-                    force_result = RunResult (RunResult.TIME_LIMIT, -1, 'cpu usage: %.2f' % cpu_time)
-                    self.__process.terminate()
-                if mem_usage > self.__limit_memory:
-                    force_result = RunResult(RunResult.MEMORY_LIMIT, -1, 'memory usage: %d' % mem_usage)
-                    self.__process.terminate()
-            except IOError:
-                pass
-        line = "[%.3f] " % (time.time() - start)
-        log (line, prefix=False, end='')
-        if force_result is not None:
-            return force_result
-        code = self.__process.returncode
-        if code == -signal.SIGXCPU:
-            return RunResult(RunResult.TIME_LIMIT, code, 'signal SIGXCPU received')
-        elif code != 0:
-            return RunResult(RunResult.RUNTIME, code, 'runtime error %d' % code)
-        else:
-            return RunResult(RunResult.OK, code)
 
 
 
@@ -288,7 +212,7 @@ def tests_export ( problem ):
         n += 1
     log ('pattern: %s, tests copied: %d' % (pattern, n))
 
-def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
+def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
     global log
     os.chdir (problem.path)
     if tests is None:
@@ -315,7 +239,8 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
         output_name = os.path.join ('.temp', str (problem.output))
     invoker = Invoker (
         solution.executable, limit_time=problem.limit_time,
-        limit_idle=problem.limit_idle, limit_memory=problem.limit_memory
+        limit_idle=problem.limit_idle, limit_memory=problem.limit_memory,
+        t=t
     )
     for i, x in enumerate (tests):
         test = x.create ()
@@ -542,7 +467,7 @@ class T:
 
     def __build ( self, problem, arguments ):
         build_problem (problem)
-        if not check_problem (problem):
+        if not check_problem (problem, t=self):
             raise t.Error ("problem check failed")
 
     def __check ( self, problem, arguments ):
@@ -551,7 +476,7 @@ class T:
             solution = heuristic.Source.find (arguments[0], problem.name_short)
             if solution is None:
                 raise t.Error ("solution not found: '%s'" % arguments[0])
-        check_problem (problem, solution=solution)
+        check_problem (problem, solution=solution, t=self)
 
     def __clean ( self, problem, arguments ):
         clean_problem (problem)
@@ -566,7 +491,7 @@ class T:
         while r:
             r = check_problem (problem, solution=solution, tests=[
                 Test.generate (generator, problem=problem, name='<stress>')
-            ], quiet=True )
+            ], quiet=True, t=self )
 
     def __tests ( self, problem, *arguments ):
         tests_export (problem)

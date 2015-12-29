@@ -13,10 +13,13 @@ class Executable:
       self.command.append(self.path)
   def __str__( self ):
     return self.path
-  def __call__( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
+  def start ( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
     process = subprocess.Popen (
         self.command + list (arguments), cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
     )
+    return process
+  def __call__( self, *args, **kwargs ):
+    process = self.start (*args, **kwargs)
     process.communicate ()
     return process.returncode == 0
 
