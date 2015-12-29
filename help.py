@@ -304,7 +304,7 @@ license = \
     "make exceptions for this.  Our decision will be guided by the two goals\n" + \
     "of preserving the free status of all derivatives of our free software and\n" + \
     "of promoting the sharing and reuse of software generally.\n" + \
-        warranty + \
+    warranty + \
     "                     END OF TERMS AND CONDITIONS\n" + \
     "\n"
 

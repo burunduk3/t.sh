@@ -25,9 +25,10 @@ class Invoker:
         self.__condition.release()
 
     def run( self, *, directory=None, stdin=None, stdout=None, stderr=None ):
-    # limit resources of current process: bad idea
-    # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
-    # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
+        # TODO: twice upgrade invokation
+        # limit resources of current process: bad idea
+        # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
+        # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
         start = time.time ()
         self.__process = self.__executable.start (directory=directory, stdin=stdin, stdout=stdout, stderr=stderr)
         pid = self.__process.pid
@@ -42,7 +43,7 @@ class Invoker:
             self.__condition.release()
             if self.__process.returncode is not None:
                 break
-            try: # так может случится, что процесс завершится в самый интересный момент
+            try:  # так может случиться, что процесс завершится в самый интересный момент
                 stat = open("/proc/%d/stat" % pid, 'r')
                 stats = stat.readline().split()
                 stat.close()

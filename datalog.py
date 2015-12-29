@@ -62,7 +62,7 @@ class Datalog:
         return self._actions[event] (*data[2:])
     def _commit ( self, *args, check=True ):
         now = str (int (time.time ()))
-        line = ' '.join ([now] + list (args)) # TODO: spaces and so on
+        line = ' '.join ([now] + list (args))  # TODO: spaces and so on
         if self.__precheck (line) is None:
             assert not check
             return None

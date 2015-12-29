@@ -135,7 +135,7 @@ def problem_force_xml ( path, *, t ):
         with open (os.path.join (path, 'problem.xml'), 'r'):
             raise Exception ("TODO: parse problem.xml")
     except FileNotFoundError:
-        return None # no file, no problems
+        return None  # no file, no problems
     assert False
 
 
@@ -184,7 +184,7 @@ def problem_force_properties ( path, *, t ):
             assert key not in result
             result[key] = morph (value)
     except FileNotFoundError:
-        return None # no file, no problems
+        return None  # no file, no problems
 
     return result
 
@@ -214,27 +214,27 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
         'name': lambda: os.path.basename (p.path),
         'time limit': lambda: 5.0,
         'idle limit': lambda: 10.0,
-        'memory limit': lambda: 768 * 2**20, # 768 MiB
+        'memory limit': lambda: 768 * 2**20,  # 768 MiB
         # TODO: mode autodetect here, fix output
         # 'generator', lambda: self.__autodetect_generator ()),
         # 'validator', lambda: self.validator, lambda: self.__autodetect_validator ()),
         # 'checker', lambda: self.checker, lambda: self.__autodetect_checker ())
-        #for name, key, setter in detectors:
-        #    if not setter ():
-        #        continue
-        #    self._t.log.notice ("[p %s]: found %s: %s" % (self.name, name, key ()))
+        # for name, key, setter in detectors:
+        #     if not setter ():
+        #         continue
+        #     self._t.log.notice ("[p %s]: found %s: %s" % (self.name, name, key ()))
     }
     os.chdir (p.path)
     def routine ( key, getter, setter, default ):
         nonlocal p, t
         value = getter ()
-        name = p.name_short if p.name_short is not None else p.uuid # TODO move into Problem method
+        name = p.name_short if p.name_short is not None else p.uuid  # TODO move into Problem method
         if key in force:
             value_new = force[key] (p)
             if value_new != value:
                 t.log ('[problem %s] set %s to %s' % (name, key, value_new))
                 setter (value_new)
-            return 
+            return
         if value is not None:
             return
         # TODO: semidefaults

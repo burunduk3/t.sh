@@ -296,7 +296,7 @@ def wolf_export( problem, configuration, global_config ):
         'delphi': 'win32.checker.delphi.ifmo',
         # 'delphi': 'win32.checker.delphi.kitten',
         'c++': 'win32.checker.c++',
-        'perl': 'win32.perl' # nothing special
+        'perl': 'win32.perl'  # nothing special
     }
     checker_name = os.path.basename(checker)
     compiler = wolf_compilers[global_config.detect_language(checker).name]
@@ -400,14 +400,14 @@ def prepare_windows():
   BACKGROUND_RED = 0x40
   BACKGROUND_INTENSITY = 0x80
   windows_colors = [
-      0, # black
-      FOREGROUND_RED, # red
-      FOREGROUND_GREEN, # green
-      FOREGROUND_GREEN | FOREGROUND_RED, # brown
-      FOREGROUND_BLUE, # blue
-      FOREGROUND_BLUE | FOREGROUND_RED, # magenta
-      FOREGROUND_BLUE | FOREGROUND_GREEN, # skyblue
-      FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED, # gray
+      0,  # black
+      FOREGROUND_RED,  # red
+      FOREGROUND_GREEN,  # green
+      FOREGROUND_GREEN | FOREGROUND_RED,  # brown
+      FOREGROUND_BLUE,  # blue
+      FOREGROUND_BLUE | FOREGROUND_RED,  # magenta
+      FOREGROUND_BLUE | FOREGROUND_GREEN,  # skyblue
+      FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED,  # gray
       0, 0, 0
   ]
   def windows_write( text, end='' ):
@@ -491,7 +491,7 @@ class T:
         self.__log ('create problem #%s' % uuid)
 
     def __problem_reset ( self, problem ):
-        problem.reset ();
+        problem.reset ()
         heuristic.problem_rescan (problem, t=self)
 
     def __problem_rescan ( self, problem ):
@@ -559,7 +559,7 @@ def arguments_parse():
     return options, args.command
 
 
-if sys.platform == 'win32': # if os is outdated
+if sys.platform == 'win32':  # if os is outdated
   prepare = prepare_windows
 
 options, arguments = arguments_parse()

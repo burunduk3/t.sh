@@ -200,7 +200,7 @@ class Problem (Datalog):
         self.__checker = heuristic.Source (path, compiler)
         return True
     def __lev_solution ( self, path, compiler ):
-        self.__solution = heuristic.Source (path, compiler) # TODO: move Source outside of heuristic
+        self.__solution = heuristic.Source (path, compiler)  # TODO: move Source outside of heuristic
         return True
     def __lev_generator_auto ( self ):
         self.__generator = Problem.Generator.auto (self, t=self._t)
@@ -241,10 +241,10 @@ class Problem (Datalog):
         return self._commit (Problem.LEV_NAME_SHORT, str (value))
     name_short = property (lambda self: self.__name_short, __set_name_short)
     def __set_limit_time ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_TIME, '%.20f' % float (value)) # TODO: exact pack
+        return self._commit (Problem.LEV_LIMIT_TIME, '%.20f' % float (value))  # TODO: exact pack
     limit_time = property (lambda self: self.__limit_time, __set_limit_time)
     def __set_limit_idle ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_IDLE, '%.20f' % float (value)) # TODO: exact pack
+        return self._commit (Problem.LEV_LIMIT_IDLE, '%.20f' % float (value))  # TODO: exact pack
     limit_idle = property (lambda self: self.__limit_idle, __set_limit_idle)
     def __set_limit_memory ( self, value ):
         return self._commit (Problem.LEV_LIMIT_MEMORY, '%d' % int (value))
