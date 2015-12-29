@@ -42,6 +42,9 @@ suffixes = {
     'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
 }
 
+def suffixes_all ():
+    return suffixes.keys ()
+
 def compiler_detect ( path ):
     suffix = path.split ('.')[-1]
     try:

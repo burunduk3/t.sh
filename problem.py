@@ -375,7 +375,7 @@ class Problem (Datalog):
                     continue
                 result = generator.run (stdout=open (target, 'w'))
                 if not result:
-                    log.error('generator (%s) failed' % generator)
+                    raise self._t.Error ('generator (%s) failed' % generator)
                     failure = True
                 else:
                     count_gen += 1

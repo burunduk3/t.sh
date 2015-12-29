@@ -30,170 +30,16 @@ import json
 import base64
 import socket
 import argparse
-import traceback
 
 import common as t
 from problem import Problem
 import heuristic
 import help
 import legacy
+from compilers import compilers_configure
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
-
-
-# === COMPILERS CONFIGURATION ==
-# Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
-
-def compilers_configure():
-    global configuration, suffixes
-
-    # script = lambda interpeter: lambda binary: Executable (binary, [interpeter])
-    def script ( interpeter ):
-        def result ( binary ):
-            nonlocal interpeter
-            return Executable (binary, [interpeter])
-        return result
-
-    executable_default = lambda binary: Executable (binary)
-    binary_default = lambda source: os.path.splitext(source)[0]
-
-    java_cp_suffix = os.environ.get('CLASSPATH', None)
-    if java_cp_suffix is None:
-        java_cp_suffix = ""
-    else:
-        java_cp_suffix = ":" + java_cp_suffix
-
-    # something strange
-    # include_path = '../../../include/testlib.ifmo'
-    # include_path = '/home/burunduk3/user/include/testlib.ifmo'
-    include_path = '/home/burunduk3/user/include'
-    flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
-    flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
-
-    configuration.compilers = {
-        'bash': Compiler ('bash', executable=script ('bash')),
-        'perl': Compiler ('perl', executable=script ('perl')),
-        'python2': Compiler ('python2', executable=script ('python2')),
-        'python3': Compiler ('python3', executable=script ('python3')),
-        'c': Compiler ('c',
-            binary=binary_default,
-            command=lambda source, binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source],
-            executable=executable_default
-        ),
-        'c++': Compiler ('c++',
-            binary=binary_default,
-            command=lambda source, binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source],
-            executable=executable_default
-        ),
-        'delphi': Compiler ('delphi',
-            binary=binary_default,
-            command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source],
-            # command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
-            executable=executable_default
-        ),
-        'java': Compiler ('java',
-            binary=lambda source: os.path.splitext(source)[0] + '.class',
-            command=lambda source, binary: ['javac', '-cp', os.path.dirname(source), source],
-            executable=lambda binary: Executable (binary, [
-                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
-                '-cp', os.path.dirname (binary) + java_cp_suffix,
-                os.path.splitext (os.path.basename (binary))[0]
-            ], add=False)
-        ),
-        'java.checker': Compiler ('java',
-            binary=lambda source: os.path.splitext(source)[0] + '.class',
-            command=lambda source, binary: ['javac', '-cp', os.path.dirname (source), source],
-            executable=lambda binary: Executable (binary, [
-                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
-                "-cp", os.path.dirname(binary) + java_cp_suffix,
-                "ru.ifmo.testlib.CheckerFramework", os.path.splitext (os.path.basename (binary))[0]
-            ], add=False)
-        ),
-        'pascal': Compiler ('pascal',
-            binary=binary_default,
-            command=lambda source, binary: [
-                'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
-                '-d__T_SH__', '-o'+binary, source
-            ],
-            executable=executable_default
-        ),
-    }
-    heuristic.set_compilers (configuration.compilers)
-
-    def detector_python( source ):
-        with open (source, 'r') as f:
-            shebang = f.readline ()
-            if shebang[0:2] != '#!':
-                shebang = ''
-            if 'python3' in shebang:
-                return 'python3'
-            elif 'python2' in shebang:
-                return 'python2'
-            else:
-                # python3 is default
-                return 'python3'
-
-    configuration.detector = {
-        'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
-        'pas': 'pascal', 'dpr': 'delphi',
-        'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
-    }
-    suffixes = configuration.detector.keys()
-
-
-
-# === PARTS OF t.sh ===
-
-# # GCC flags
-# gccVersionString=`gcc --version | head -n 1`
-# gccVersion=${gccVersionString##* }
-# gccVersionMajor=${gccVersion##*.}
-# if [ $gccVersionMajor == "4" ] ; then
-#   CFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
-# else
-#   CFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
-# fi
-# CXXFLAGS="${CFLAGS}"
-# # End of GCC flags
-# BINARY_SUFFIX=""
-# if [ "$OPERATION_SYSTEM" != "Linux" ]; then
-#   CFLAGS="$CFLAGS -Wl,--stack=134217728"
-#   CXXFLAGS="$CXXFLAGS -Wl,--stack=134217728"
-#   BINARY_SUFFIX=".exe"
-# fi
-
-class Log:
-  DEBUG, INFO, NOTICE, WARNING, ERROR, FATAL = range(6)
-  def __init__( self ):
-    self.__verbose = False
-    self.color = {Log.DEBUG: 37, Log.INFO: 36, Log.NOTICE: 32, Log.WARNING: 33, Log.ERROR: 31, Log.FATAL: 31}
-    self.message = {Log.DEBUG: 'debug', Log.INFO: 'info', Log.NOTICE: 'notice', Log.WARNING: 'warning', Log.ERROR: 'error', Log.FATAL: 'fatal error'}
-    self.debug = lambda text: self(text, Log.DEBUG)
-    self.info = lambda text: self(text, Log.INFO)
-    self.notice = lambda text: self(text, Log.NOTICE)
-    self.warning = lambda text: self(text, Log.WARNING)
-    self.error = lambda text: self(text, Log.ERROR)
-    self.fatal = lambda text: self(text, Log.FATAL)
-    pass
-  def __call__( self, message, level=INFO, *, exit=None, end='\n', verbose=False ):
-    if verbose and not self.__verbose:
-        return
-    if verbose:
-        self.write ("\x1b[1;%dm[t:%s,verbose]\x1b[0m %s" % (self.color[level], self.message[level], message), end=end)
-    else:
-        self.write ("[t:%s] \x1b[1;%dm%s\x1b[0m" % (self.message[level], self.color[level], message), end=end)
-    exit = exit if exit is not None else level >= Log.ERROR
-    if exit:
-        # TODO: remove this
-        sys.exit(1)
-  def verbose ( self ):
-      self.__verbose = True
-  def write( self, message, end='', color=None ):
-    if color is not None:
-      message = "\x1b[1;%dm%s\x1b[0m" % (self.color[color], message)
-    print(message, end=end)
-    sys.stdout.flush()
 
 
 class Configuration:
@@ -212,52 +58,6 @@ class Configuration:
       return self.compilers[detector]
     return self.compilers[detector(source)]
 
-
-compile_cache = {}
-
-class Compiler:
-  def __init__( self, name, *, binary=None, command=None, executable=None ):
-    self.binary, self.command, self.executable = binary, command, executable
-    if binary is None:
-        self.binary = lambda source: source
-    self.name = name
-  def __call__( self, source ):
-    global log, compile_cache
-    if not source.startswith ('/'):
-        source = os.path.join (os.getcwd (), source)
-    if source in compile_cache:
-        return compile_cache[source]
-    binary = self.binary(source)
-    if binary == source or self.command is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
-      log ('compile skipped: %s' % binary)
-    else:
-      log ('compile: %s → %s' % (source, binary))
-      command = self.command(source, binary)
-      log ('$ %s' % (' '.join (command)), verbose=True)
-      process = subprocess.Popen(command)
-      process.communicate()
-      if process.returncode != 0:
-        return None
-    compile_cache[source] = self.executable(binary)
-    return compile_cache[source]
-
-
-class Executable:
-  def __init__( self, path, command=[], add=True ):
-    directory, filename = os.path.split(path)
-    directory = '.' if directory == '' else directory
-    path = os.path.join(directory, filename)
-    self.path, self.command = path, list(command)
-    if add:
-      self.command.append(self.path)
-  def __str__( self ):
-    return self.path
-  def __call__( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
-    process = subprocess.Popen (
-        self.command + list (arguments), cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
-    )
-    process.communicate ()
-    return process.returncode == 0
 
 class RunResult:
   RUNTIME, TIME_LIMIT, MEMORY_LIMIT, OK = range(4)
@@ -311,7 +111,7 @@ class Invoker:
                 mem_usage = int(stats_m[0]) * 1024
                 line = "%.3f" % (time.time() - start)
                 line = line + '\b' * len(line)
-                log.write(line)
+                log (line, prefix=False, end='')
                 if cpu_time > self.__limit_time:
                     force_result = RunResult (RunResult.TIME_LIMIT, -1, 'cpu usage: %.2f' % cpu_time)
                     self.__process.terminate()
@@ -321,7 +121,7 @@ class Invoker:
             except IOError:
                 pass
         line = "[%.3f] " % (time.time() - start)
-        log.write(line)
+        log (line, prefix=False, end='')
         if force_result is not None:
             return force_result
         code = self.__process.returncode
@@ -333,31 +133,6 @@ class Invoker:
             return RunResult(RunResult.OK, code)
 
 
-def find_source( path ):
-    global suffixes
-    return heuristic.Source (suffixes).find (path)
-
-
-def read_problem_properties( filename ):
-  result = {}
-  for line in open(filename, 'r').readlines():
-    key, value = [token.strip() for token in line.split('=', 1)]
-    if value[0] == '"' and value[-1] == '"':
-      value = value[1:-1]
-    result[key] = value
-  return result
-
-def just_run( source, stdin=None, stdout=None ):
-  global configuration, log
-  compiler = configuration.detect_language(source)
-  if compiler is None:
-    log.warning("%s: cannot detect language" % source)
-    return None
-  executable = compiler(source)
-  if executable is None:
-    log.warning("%s: compilation error" % executable)
-    return None
-  return executable(stdin=stdin, stdout=stdout)
 
 def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     global log
@@ -376,10 +151,10 @@ def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     for test in tests:
         if os.path.isfile (test + '.a') and not force:
             if not quiet:
-                log.write ('+')
+                log ('+', prefix=False, end='')
             continue
         if not quiet:
-            log.write('.')
+            log ('.', prefix=False, end='')
         shutil.copy (test, input_name)
         r = problem.solution.run (
             directory='.temp',
@@ -390,7 +165,7 @@ def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
             raise t.Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
         shutil.copy (output_name, test + '.a')
     if not quiet:
-        log.write ('done\n')
+        log ('done', prefix=False)
 
 def build_problem ( problem ):
     global log
@@ -434,11 +209,11 @@ def build_problem ( problem ):
         validator.compile ()
         log('validate tests', end='')
         for test in problem.tests:
-            log.write('.')
+            log ('.', prefix=False, end='')
             if validator.run (test, stdin=open(test, 'r')):
                 continue
             raise t.Error('[problem %s]: validation failed: %s' % (problem.name, test))
-        log.write('done\n')
+        log ('done', prefix=False)
     testset_answers (problem)
 
 
@@ -477,7 +252,7 @@ class Test:
         # TODO: validate test
         testset_answers (self.__problem, tests=[path], force=True, quiet=True)
         if not result:
-            log.error('generator (%s) failed' % self.__generator)
+            raise t.Error ('generator (%s) failed' % self.__generator)
             return None
         return path
 
@@ -554,23 +329,27 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False ):
         )
         good = False
         if r.result == RunResult.RUNTIME:
-            log.write ('Runtime error (%s).' % r.comment, end='\n', color=Log.ERROR)
+            raise t.Error ('Runtime error (%s).' % r.comment)
         elif r.result == RunResult.TIME_LIMIT:
-            log.write ('Time limit exceeded (%s).' % r.comment, end='\n', color=Log.ERROR)
+            raise t.Error ('Time limit exceeded (%s).' % r.comment)
         elif r.result == RunResult.MEMORY_LIMIT:
-            log.write ('Memory limit exceeded (%s)' % r.comment, end='\n', color=Log.ERROR)
+            raise t.Error ('Memory limit exceeded (%s)' % r.comment)
         elif r.result == RunResult.OK:
             good = True
         else:
-            log.fatal ('Invokation failed (%s).' % r.comment)
+            raise t.Error ('Invokation failed (%s).' % r.comment)
         if not good:
             return False
-        log.write ('* ')
+        log ('* ', prefix=False, end='')
         result = checker.run (input_name, output_name, test + '.a')
         if not result:
-            log ('Wrong answer on test %s.' % test_name, Log.ERROR, exit=False)
+            log.error ('Wrong answer on test %s.' % test_name)
             return False
     return True
+
+def find_source( path ):
+    # used in Wolf
+    return heuristic.Source.find (path)
 
 class WolfConnection:
     def __init__( self ):
@@ -597,14 +376,14 @@ def wolf_export( problem ):
     log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
-        log.error("cannot full name for problem %s" % configuration['id'])
+        raise t.Error ("cannot full name for problem %s" % configuration['id'])
     checker = None
     for checker_name in ['check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']]:
         checker = find_source(os.path.join('..', checker_name))
         if checker is not None:
             break
     if checker is None:
-        log.error('cannot find checker')
+        raise t.Error ('cannot find checker')
     wolf_compilers = {
         'delphi': 'win32.checker.delphi.ifmo',
         # 'delphi': 'win32.checker.delphi.kitten',
@@ -629,16 +408,17 @@ def wolf_export( problem ):
         checker = base64.b64encode(data).decode('ascii')
     wolf = WolfConnection()
     assert wolf.query({'action': 'ping'}) is True
-    log.write('send packets:')
+    log_write = lambda text: log (text, prefix=False, end='')
+    log_write('send packets:')
     problem_id = wolf.query({'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']})
     assert isinstance(problem_id, int)
-    log.write('.')
+    log_write('.')
     assert wolf.query({'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'], 'output': configuration['output-file']})
-    log.write('.')
+    log_write('.')
     assert wolf.query({'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'], 'memory': configuration['memory-limit']})
-    log.write('.')
+    log_write('.')
     assert wolf.query({'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name, 'compiler': compiler, 'source': checker})
-    log.write('.')
+    log_write('.')
     for test in tests:
         with open(test, 'rb') as f:
             data = f.read()
@@ -647,12 +427,12 @@ def wolf_export( problem ):
             data = f.read()
             answer = base64.b64encode(data).decode('ascii')
         assert wolf.query({'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer})
-        log.write('.')
-    log.write('', end='\n')
+        log_write('.')
+    log('', prefix='')
     log.info('uploaded, problem id: %d' % problem_id)
 
 def clean_problem ( problem ):
-    global log, suffixes, options
+    global log, options
     os.chdir (problem.path)
     remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
     if remove_tests and os.path.isdir ('.tests'):
@@ -671,7 +451,7 @@ def clean_problem ( problem ):
             ok = ok or filename in ("input", "output")
             if ok:
                os.remove (os.path.join (directory, filename))
-            for suffix in suffixes:
+            for suffix in heuristic.suffixes_all ():
                 if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
                     continue
                 os.remove(os.path.join(directory, filename))
@@ -788,10 +568,10 @@ class T:
                 Test.generate (generator, problem=problem, name='<stress>')
             ], quiet=True )
 
-    def __tests ( self, problem, arguments ):
+    def __tests ( self, problem, *arguments ):
         tests_export (problem)
 
-    def __wolf_export ( self, problem, arguments ):
+    def __wolf_export ( self, problem, *arguments ):
         problem_configuration = legacy.read_configuration (problem)
         wolf_export(problem_configuration)
 
@@ -800,6 +580,16 @@ class T:
         uuid = problem.create (uuid)
         self.__problems = [problem]
         self.__log ('create problem #%s' % uuid)
+
+    def __problem_reset ( self, problem ):
+        problem.reset ();
+        heuristic.problem_rescan (problem, t=self)
+
+    def __problem_rescan ( self, problem ):
+        heuristic.problem_rescan (problem, t=self)
+
+    def __problem_set ( self, problem, arguments ):
+        raise t.Error ("TODO")
 
     def __help ( self, par='disclaimer' ):
         sys.stdout.write ({
@@ -817,6 +607,9 @@ class T:
                 ('clean', self.__clean),
                 ('stress', self.__stress),
                 ('tests', self.__tests),
+                ('problem:reset', self.__problem_reset),
+                ('problem:rescan', self.__problem_rescan),
+                ('problem:set', self.__problem_set),
                 ('wolf:export', self.__wolf_export)
             ]
         }
@@ -860,15 +653,16 @@ def arguments_parse():
 if sys.platform == 'win32': # if os is outdated
   prepare = prepare_windows
 
-log = Log()
+options, arguments = arguments_parse()
+
+log = t.Log()
 configuration = Configuration()
-compilers_configure()
 prepare()
 global_config = configuration
 
-options, arguments = arguments_parse()
-
 tpy = T (log, options)
+compilers_configure ( configuration, tpy )
+
 try:
     if options['verbose']:
         log.verbose ()
