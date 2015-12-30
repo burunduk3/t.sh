@@ -310,7 +310,7 @@ class Problem (Datalog):
             return default ()
         for name in ['do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen', 'gen_tests']:
             # self._t.log.debug ('source: "%s"' % os.path.join (directory, name))
-            generator = heuristic.Source.find (os.path.join (directory, name))
+            generator = heuristic.Source.find (name, directory=directory)
             if generator is None:
                 continue
             return self.__set_generator_external (generator, directory)

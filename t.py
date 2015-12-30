@@ -457,7 +457,7 @@ class T:
     def __check ( self, problem, arguments ):
         solution = None
         if len(arguments) >= 1:
-            solution = heuristic.Source.find (arguments[0], problem.name_short)
+            solution = heuristic.Source.find (arguments[0], prefix=problem.name_short)
             if solution is None:
                 raise t.Error ("solution not found: '%s'" % arguments[0])
         check_problem (problem, solution=solution, t=self)

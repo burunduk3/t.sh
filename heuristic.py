@@ -80,26 +80,26 @@ class Source:
     def run ( self, *arguments, **kwargs ):
         if self.__executable is None:
             self.compile ()
-        return self.__executable (arguments, **kwargs)
+        return self.__executable (*arguments, **kwargs)
 
     path = property (lambda self: self.__path)
     compiler = property (lambda self: self.__compiler)
     executable = property (lambda self: self.__executable)
 
     @classmethod
-    def find ( cls, path, prefix=None ):
-        for filename in [path + '.' + suffix for suffix in suffixes.keys ()]:
-            if not os.path.isfile (filename):
+    def find ( cls, path, *, prefix=None, directory=None ):
+        for filename in [path + '.' + suffix for suffix in suffixes.keys ()] + [path]:
+            if directory is not None:
+                real = os.path.join (directory, filename)
+            else:
+                real = filename
+            if not os.path.isfile (real):
                 continue
-            compiler = compiler_detect (filename)
+            compiler = compiler_detect (real)
             if compiler is not None:
-                return cls (filename, compiler)
-        if os.path.isfile (path):
-            compiler = compiler_detect (path)
-            if compiler is not None:
-                return cls (path, compiler)
+                return cls (real, compiler)
         if prefix is not None:
-            return Source.find (prefix + '_' + path)
+            return Source.find (prefix + '_' + path, directory=directory)
         return None
 
 def find_problems ( base='.', *, t ):

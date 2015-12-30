@@ -4,54 +4,72 @@ import subprocess
 import heuristic
 
 class Executable:
-  def __init__( self, path, command=[], add=True ):
-    directory, filename = os.path.split(path)
-    directory = '.' if directory == '' else directory
-    path = os.path.join(directory, filename)
-    self.path, self.command = path, list(command)
-    if add:
-      self.command.append(self.path)
-  def __str__( self ):
-    return self.path
-  def start ( self, arguments=[], directory=None, stdin=None, stdout=None, stderr=None ):
-    process = subprocess.Popen (
-        self.command + list (arguments), cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
-    )
-    return process
-  def __call__( self, *args, **kwargs ):
-    process = self.start (*args, **kwargs)
-    process.communicate ()
-    return process.returncode == 0
+    def __init__ ( self, command, *, name=None ):
+        self.__command = command
+        if name is None:
+            name = ' '.join (command)
+        self.__name = name
 
+    def __str__ ( self ):
+        return self.__name
+
+    def start ( self, *arguments, directory=None, stdin=None, stdout=None, stderr=None ):
+        process = subprocess.Popen (
+            self.__command + list (arguments),
+            cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
+        )
+        return process
+
+    def __call__ ( self, *args, **kwargs ):
+        process = self.start (*args, **kwargs)
+        process.communicate ()
+        return process.returncode == 0
+
+    @classmethod
+    def local ( cls, path ):
+        directory, filename = os.path.split (path)
+        if directory == '':
+            directory = '.'
+        path = os.path.join (directory, filename)
+        return cls ([path], name=path)
+
+
+class Compiler (Executable):
+    def __init__ ( self, command, morph, *, name=None ):
+        super (Compiler, self).__init__ (command, name=name)
+        self.__morph = morph
+
+    def compile ( self, source, target ):
+        arguments = self.__morph (source, target)
+        return self (*arguments)
 
 compile_cache = {}
 
-class Compiler:
-  def __init__( self, name, *, binary=None, command=None, executable=None, t=None ):
-    self.binary, self.command, self.executable = binary, command, executable
+class Language:
+  def __init__( self, name, *, binary=None, compiler=None, executable=None, t=None ):
+    self.binary, self.__compiler, self.executable = binary, compiler, executable
     if binary is None:
         self.binary = lambda source: source
     self.name = name
     self._t = t
   def __call__( self, source ):
-    global log, compile_cache
-    if not source.startswith ('/'):
-        source = os.path.join (os.getcwd (), source)
-    if source in compile_cache:
-        return compile_cache[source]
+    global compile_cache
+    key = source
+    if not key.startswith ('/'):
+        key = os.path.join (os.getcwd (), key)
+    if key in compile_cache:
+        return compile_cache[key]
     binary = self.binary(source)
-    if binary == source or self.command is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
+    if binary == source or self.__compiler is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
       self._t.log ('compile skipped: %s' % binary)
     else:
       self._t.log ('compile: %s → %s' % (source, binary))
-      command = self.command(source, binary)
-      self._t.log.debug ('$ %s' % (' '.join (command)))
-      process = subprocess.Popen(command)
-      process.communicate()
-      if process.returncode != 0:
-        return None
-    compile_cache[source] = self.executable(binary)
-    return compile_cache[source]
+      if not self.__compiler.compile (source, binary):
+          return None  # TODO: raise t.Error?
+    if not binary.startswith ('/'):
+        binary = os.path.join (os.getcwd (), binary)
+    compile_cache[key] = self.executable(binary)
+    return compile_cache[key]
 
 
 # === COMPILERS CONFIGURATION ==
@@ -64,10 +82,10 @@ def compilers_configure ( configuration, t ):
     def script ( interpeter ):
         def result ( binary ):
             nonlocal interpeter
-            return Executable (binary, [interpeter])
+            return Executable ([interpeter, binary])
         return result
 
-    executable_default = lambda binary: Executable (binary)
+    executable_default = lambda binary: Executable.local (binary)
     binary_default = lambda source: os.path.splitext(source)[0]
 
     java_cp_suffix = os.environ.get('CLASSPATH', None)
@@ -84,55 +102,76 @@ def compilers_configure ( configuration, t ):
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
     compilers = {
-        'bash': Compiler ('bash', executable=script ('bash'), t=t),
-        'perl': Compiler ('perl', executable=script ('perl'), t=t),
-        'python2': Compiler ('python2', executable=script ('python2'), t=t),
-        'python3': Compiler ('python3', executable=script ('python3'), t=t),
-        'c': Compiler ('c',
+        'bash': Language ('bash', executable=script ('bash'), t=t),
+        'perl': Language ('perl', executable=script ('perl'), t=t),
+        'python2': Language ('python2', executable=script ('python2'), t=t),
+        'python3': Language ('python3', executable=script ('python3'), t=t),
+        'c': Language ('c',
             binary=binary_default,
-            command=lambda source, binary: ['gcc'] + flags_c + ['-x', 'c', '-o', binary, source],
+            compiler=Compiler (
+                ['gcc'] + flags_c + ['-x', 'c'],
+                lambda source, target: ['-o', target, source],
+                name='c.gcc'
+            ),
             executable=executable_default,
             t=t
         ),
-        'c++': Compiler ('c++',
+        'c++': Language ('c++',
             binary=binary_default,
-            command=lambda source, binary: ['g++'] + flags_cpp + ['-x', 'c++', '-o', binary, source],
+            compiler=Compiler (
+                ['g++'] + flags_cpp + ['-x', 'c++'],
+                lambda source, target: ['-o', target, source],
+                name='c++.gcc'
+            ),
             executable=executable_default,
             t=t
         ),
-        'delphi': Compiler ('delphi',
+        'delphi': Language ('delphi',
             binary=binary_default,
-            command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__', '-o'+binary, source],
+            compiler=Compiler (
+                ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__'],
+                lambda source, target: ['-o' + target, source],
+                name='delphi.fpc'
+            ),
             # command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
             executable=executable_default,
             t=t
         ),
-        'java': Compiler ('java',
+        'java': Language ('java',
             binary=lambda source: os.path.splitext(source)[0] + '.class',
-            command=lambda source, binary: ['javac', '-cp', os.path.dirname(source), source],
-            executable=lambda binary: Executable (binary, [
+            compiler=Compiler (
+               ['javac'],
+               lambda source, target: ['-cp', os.path.dirname (source), source],
+               name='java'
+            ),
+            executable=lambda binary: Executable ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
                 '-cp', os.path.dirname (binary) + java_cp_suffix,
                 os.path.splitext (os.path.basename (binary))[0]
-            ], add=False),
+            ], name=binary),
             t=t
         ),
-        'java.checker': Compiler ('java',
+        'java.checker': Language ('java',
             binary=lambda source: os.path.splitext(source)[0] + '.class',
-            command=lambda source, binary: ['javac', '-cp', os.path.dirname (source), source],
-            executable=lambda binary: Executable (binary, [
+            compiler=Compiler (
+               ['javac'],
+               lambda source, target: ['-cp', os.path.dirname (source), source],
+               name='checker.java'
+            ),
+            executable=lambda binary: Executable ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
                 "-cp", os.path.dirname(binary) + java_cp_suffix,
                 "ru.ifmo.testlib.CheckerFramework", os.path.splitext (os.path.basename (binary))[0]
-            ], add=False),
+            ], name=binary),
             t=t
         ),
-        'pascal': Compiler ('pascal',
+        'pascal': Language ('pascal',
             binary=binary_default,
-            command=lambda source, binary: [
-                'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
-                '-d__T_SH__', '-o'+binary, source
-            ],
+            compiler=Compiler (
+                ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__'],
+                lambda source, target: ['-o' + target, source],
+                name='pascal.fpc'
+            ),
             executable=executable_default,
             t=t
         ),
