@@ -3,10 +3,13 @@ import signal
 import time
 import threading
 
+
 class RunResult:
-  RUNTIME, TIME_LIMIT, MEMORY_LIMIT, OK = range(4)
-  def __init__( self, result, exitcode, comment='' ):
-    self.result, self.exitcode, self.comment = result, exitcode, comment
+    RUNTIME, TIME_LIMIT, MEMORY_LIMIT, OK = range(4)
+
+    def __init__( self, result, exitcode, comment='' ):
+        self.result, self.exitcode, self.comment = result, exitcode, comment
+
 
 class Invoker:
     def __init__( self, executable, *, limit_time, limit_idle, limit_memory, t ):
@@ -30,7 +33,9 @@ class Invoker:
         # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
         # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
         start = time.time ()
-        self.__process = self.__executable.start (directory=directory, stdin=stdin, stdout=stdout, stderr=stderr)
+        self.__process = self.__executable.start (
+            directory=directory, stdin=stdin, stdout=stdout, stderr=stderr
+        )
         pid = self.__process.pid
         self.__condition = threading.Condition()
         thread = threading.Thread(target=self.__waiter)
@@ -50,16 +55,21 @@ class Invoker:
                 stat = open("/proc/%d/statm" % pid, 'r')
                 stats_m = stat.readline().split()
                 stat.close()
-                cpu_time = (int(stats[13]) + int(stats[14])) / os.sysconf (os.sysconf_names['SC_CLK_TCK'])
+                cpu_time = (int(stats[13]) + int(stats[14])) / \
+                    os.sysconf (os.sysconf_names['SC_CLK_TCK'])
                 mem_usage = int(stats_m[0]) * 1024
                 line = "%.3f" % (time.time() - start)
                 line = line + '\b' * len(line)
                 self._t.log (line, prefix=False, end='')
                 if cpu_time > self.__limit_time:
-                    force_result = RunResult (RunResult.TIME_LIMIT, -1, 'cpu usage: %.2f' % cpu_time)
+                    force_result = RunResult (
+                        RunResult.TIME_LIMIT, -1, 'cpu usage: %.2f' % cpu_time
+                    )
                     self.__process.terminate()
                 if mem_usage > self.__limit_memory:
-                    force_result = RunResult(RunResult.MEMORY_LIMIT, -1, 'memory usage: %d' % mem_usage)
+                    force_result = RunResult (
+                        RunResult.MEMORY_LIMIT, -1, 'memory usage: %d' % mem_usage
+                    )
                     self.__process.terminate()
             except IOError:
                 pass

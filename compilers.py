@@ -1,7 +1,9 @@
 import os
 import subprocess
 
+from common import Error, Module
 import heuristic
+
 
 class Executable:
     def __init__ ( self, command, *, name=None ):
@@ -43,38 +45,48 @@ class Compiler (Executable):
         arguments = self.__morph (source, target)
         return self (*arguments)
 
+
 compile_cache = {}
 
-class Language:
-  def __init__( self, name, *, binary=None, compiler=None, executable=None, t=None ):
-    self.binary, self.__compiler, self.executable = binary, compiler, executable
-    if binary is None:
-        self.binary = lambda source: source
-    self.name = name
-    self._t = t
-  def __call__( self, source ):
-    global compile_cache
-    key = source
-    if not key.startswith ('/'):
-        key = os.path.join (os.getcwd (), key)
-    if key in compile_cache:
+
+class Language (Module):
+    def __init__( self, *, binary=None, compiler=None, executable=None, t ):
+        super (Language, self).__init__ (t)
+        self.__binary = binary
+        self.__compiler = compiler
+        self.__executable = executable
+        if binary is None:
+            self.__binary = lambda source: source
+
+    def __call__( self, source ):
+        global compile_cache
+        key = source
+        if not key.startswith ('/'):
+            key = os.path.join (os.getcwd (), key)
+        if key in compile_cache:
+            return compile_cache[key]
+        binary = self.__binary (source)
+        need_recompile = True
+        if self.__compiler is None:
+            assert binary == source
+            need_recompile = False
+        if os.path.isfile (binary) and os.stat (binary).st_mtime >= os.stat (source).st_mtime:
+            need_recompile = False
+        if need_recompile:
+            self._log ('compile: %s → %s' % (source, binary))
+            if not self.__compiler.compile (source, binary):
+                raise Error ("comilation failed: %s" % source)
+        else:
+            self._log ('compile skipped: %s' % binary)
+        if not binary.startswith ('/'):
+            binary = os.path.join (os.getcwd (), binary)
+        compile_cache[key] = self.__executable (binary)
         return compile_cache[key]
-    binary = self.binary(source)
-    if binary == source or self.__compiler is None or (os.path.isfile(binary) and os.stat(binary).st_mtime >= os.stat(source).st_mtime):
-      self._t.log ('compile skipped: %s' % binary)
-    else:
-      self._t.log ('compile: %s → %s' % (source, binary))
-      if not self.__compiler.compile (source, binary):
-          return None  # TODO: raise t.Error?
-    if not binary.startswith ('/'):
-        binary = os.path.join (os.getcwd (), binary)
-    compile_cache[key] = self.executable(binary)
-    return compile_cache[key]
 
 
 # === COMPILERS CONFIGURATION ==
 # Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
-
+# TODO: move to heuristics
 
 def compilers_configure ( configuration, t ):
 
@@ -102,11 +114,11 @@ def compilers_configure ( configuration, t ):
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
     compilers = {
-        'bash': Language ('bash', executable=script ('bash'), t=t),
-        'perl': Language ('perl', executable=script ('perl'), t=t),
-        'python2': Language ('python2', executable=script ('python2'), t=t),
-        'python3': Language ('python3', executable=script ('python3'), t=t),
-        'c': Language ('c',
+        'bash': Language (executable=script ('bash'), t=t),
+        'perl': Language (executable=script ('perl'), t=t),
+        'python2': Language (executable=script ('python2'), t=t),
+        'python3': Language (executable=script ('python3'), t=t),
+        'c': Language (
             binary=binary_default,
             compiler=Compiler (
                 ['gcc'] + flags_c + ['-x', 'c'],
@@ -116,7 +128,7 @@ def compilers_configure ( configuration, t ):
             executable=executable_default,
             t=t
         ),
-        'c++': Language ('c++',
+        'c++': Language (
             binary=binary_default,
             compiler=Compiler (
                 ['g++'] + flags_cpp + ['-x', 'c++'],
@@ -126,23 +138,29 @@ def compilers_configure ( configuration, t ):
             executable=executable_default,
             t=t
         ),
-        'delphi': Language ('delphi',
+        'delphi': Language (
             binary=binary_default,
             compiler=Compiler (
-                ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__'],
+                [
+                    'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path,
+                    '-Fi' + include_path, '-d__T_SH__'
+                ],
                 lambda source, target: ['-o' + target, source],
                 name='delphi.fpc'
             ),
-            # command=lambda source, binary: ['fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__', '-o'+binary, source],
+            # command=lambda source, binary: [
+            #     'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__',
+            #     '-o'+binary, source
+            # ],
             executable=executable_default,
             t=t
         ),
-        'java': Language ('java',
-            binary=lambda source: os.path.splitext(source)[0] + '.class',
+        'java': Language (
+            binary=lambda source: os.path.splitext (source)[0] + '.class',
             compiler=Compiler (
-               ['javac'],
-               lambda source, target: ['-cp', os.path.dirname (source), source],
-               name='java'
+                ['javac'],
+                lambda source, target: ['-cp', os.path.dirname (source), source],
+                name='java'
             ),
             executable=lambda binary: Executable ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
@@ -151,12 +169,12 @@ def compilers_configure ( configuration, t ):
             ], name=binary),
             t=t
         ),
-        'java.checker': Language ('java',
+        'java.checker': Language (
             binary=lambda source: os.path.splitext(source)[0] + '.class',
             compiler=Compiler (
-               ['javac'],
-               lambda source, target: ['-cp', os.path.dirname (source), source],
-               name='checker.java'
+                ['javac'],
+                lambda source, target: ['-cp', os.path.dirname (source), source],
+                name='checker.java'
             ),
             executable=lambda binary: Executable ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
@@ -165,10 +183,13 @@ def compilers_configure ( configuration, t ):
             ], name=binary),
             t=t
         ),
-        'pascal': Language ('pascal',
+        'pascal': Language (
             binary=binary_default,
             compiler=Compiler (
-                ['fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path, '-d__T_SH__'],
+                [
+                    'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
+                    '-d__T_SH__'
+                ],
                 lambda source, target: ['-o' + target, source],
                 name='pascal.fpc'
             ),

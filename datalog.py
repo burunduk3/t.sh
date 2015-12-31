@@ -19,15 +19,20 @@
 
 import time
 
+
 class Type:
     def __init__ ( self, t ):
         self._t = t
+
     def __str__ ( self ):
         assert False
+
     def dump ( self ):
         assert False
+
     def __eq__ ( self, x ):
         assert False
+
 
 class Datalog:
     class NotFound (Exception):
@@ -55,11 +60,13 @@ class Datalog:
         if event not in self._actions:
             return None
         return True
+
     def __event ( self, line ):
         data = line.split ()
         self._time = int(data[0])
         event = data[1]
         return self._actions[event] (*data[2:])
+
     def _commit ( self, *args, check=True ):
         now = str (int (time.time ()))
         line = ' '.join ([now] + list (args))  # TODO: spaces and so on

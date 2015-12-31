@@ -23,6 +23,7 @@ import common
 from datalog import Datalog
 import problem
 
+
 def detector_python( source ):
     with open (source, 'r') as f:
         shebang = f.readline ()
@@ -42,8 +43,10 @@ suffixes = {
     'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
 }
 
+
 def suffixes_all ():
     return suffixes.keys ()
+
 
 def compiler_detect ( path ):
     suffix = path.split ('.')[-1]
@@ -55,9 +58,11 @@ def compiler_detect ( path ):
         return detector
     return detector (path)
 
+
 def set_compilers ( value ):
     global compilers
     compilers = value
+
 
 class Source:
     def __init__ ( self, path, compiler=None ):
@@ -68,8 +73,11 @@ class Source:
 
     def __str__ ( self ):
         return self.__path
+
     def __eq__ ( self, other ):
-        return type (other) is Source and self.__path == other.__path and self.__compiler == other.__compiler
+        return type (other) is Source and \
+            self.__path == other.__path and \
+            self.__compiler == other.__compiler
 
     def compile ( self ):
         global compilers
@@ -77,6 +85,7 @@ class Source:
         self.__executable = compiler (self.__path)
         if self.__executable is None:
             raise common.Error ("%s: compilation error" % self.__path)
+
     def run ( self, *arguments, **kwargs ):
         if self.__executable is None:
             self.compile ()
@@ -102,6 +111,7 @@ class Source:
             return Source.find (prefix + '_' + path, directory=directory)
         return None
 
+
 def find_problems ( base='.', *, t ):
     queue = [os.path.abspath (base)]
     for path in queue:
@@ -116,6 +126,7 @@ def find_problems ( base='.', *, t ):
             yield problem_open (path, t=t)
         else:
             queue += [os.path.join (path, x) for x in sorted (os.listdir (path))]
+
 
 #
 # FORCED OPTIONS
@@ -147,6 +158,7 @@ def problem_properties_parse ( path ):
                 value = value[1:-1]
             yield key, value
 
+
 def solution_find ( token, problem ):
     result = Source.find (token)
     if result is not None:
@@ -156,6 +168,7 @@ def solution_find ( token, problem ):
         return result
     return None
 
+
 def problem_force_properties ( path, *, t ):
     try:
         properties = problem_properties_parse (os.path.join (path, 'problem.properties'))
@@ -163,7 +176,8 @@ def problem_force_properties ( path, *, t ):
         options = {
             'time-limit': ('time limit', lambda x: lambda y: float (x)),
             'idle-limit': ('idle limit', lambda x: lambda y: float (x)),
-            'memory-limit': ('memory limit', lambda x: lambda problem: problem.parse_memory (x, t=t)),
+            'memory-limit': ('memory limit',
+                lambda x: lambda problem: problem.parse_memory (x, t=t)),
             'input-file': ('input', lambda x: lambda problem: problem.parse_file (x, t=t)),
             'output-file': ('output', lambda x: lambda problem: problem.parse_file (x, t=t)),
             'solution': ('solution', lambda x: lambda problem: solution_find (x, problem))
@@ -172,7 +186,8 @@ def problem_force_properties ( path, *, t ):
             #   checker_name = problem_configuration['checker']
             #  if checker_name.startswith('testlib/'):
             #    # TODO: configure checker path somewhere
-            #    checker_name = '/home/burunduk3/code/testlib-ro/trunk/checkers/' + checker_name[8:] + '.cpp'
+            #    checker_name = '/home/burunduk3/code/testlib-ro/' +
+            #    'trunk/checkers/' + checker_name[8:] + '.cpp'
             #  checker = find_source(checker_name)
         }
         for name, value in properties:
@@ -188,11 +203,13 @@ def problem_force_properties ( path, *, t ):
 
     return result
 
+
 def problem_force_auto ( path, *, t ):
     for d in ['source', 'src', 'tests']:
         if os.path.isdir (os.path.join (path, d)):
             return {}
     return None
+
 
 def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
     force = None
@@ -225,14 +242,14 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
         #     self._t.log.notice ("[p %s]: found %s: %s" % (self.name, name, key ()))
     }
     os.chdir (p.path)
+
     def routine ( key, getter, setter, default ):
         nonlocal p, t
         value = getter ()
-        name = p.name_short if p.name_short is not None else p.uuid  # TODO move into Problem method
         if key in force:
             value_new = force[key] (p)
             if value_new != value:
-                t.log ('[problem %s] set %s to %s' % (name, key, value_new))
+                t.log ('[problem %s] set %s to %s' % (p.name, key, value_new))
                 setter (value_new)
             return
         if value is not None:
@@ -245,8 +262,9 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
         if getter () is None:
             return
         t.log.warning ("[problem %s] %s isn't set, use default (%s)" % (
-            name, key, getter ()
+            p.name, key, getter ()
         ))
+
     p.canonical (routine)
     return p
 

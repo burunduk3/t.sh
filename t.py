@@ -74,6 +74,7 @@ def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     if not quiet:
         log ('done', prefix=False)
 
+
 def build_problem ( problem ):
     global log
     path = problem.path
@@ -195,6 +196,7 @@ def tests_export ( problem ):
         n += 1
     log ('pattern: %s, tests copied: %d' % (pattern, n))
 
+
 def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
     global log
     os.chdir (problem.path)
@@ -255,9 +257,11 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
             return False
     return True
 
+
 def find_source( path ):
     # used in Wolf
     return heuristic.Source.find (path)
+
 
 class WolfConnection:
     def __init__( self ):
@@ -280,13 +284,16 @@ class WolfConnection:
                 self.__tail = x
             self.__queue = iter(queue)
 
+
 def wolf_export( problem, configuration, global_config ):
     log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
         raise t.Error ("cannot full name for problem %s" % configuration['id'])
     checker = None
-    for checker_name in ['check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']]:
+    for checker_name in [
+        'check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']
+    ]:
         checker = find_source(os.path.join('..', checker_name))
         if checker is not None:
             break
@@ -318,14 +325,25 @@ def wolf_export( problem, configuration, global_config ):
     assert wolf.query({'action': 'ping'}) is True
     log_write = lambda text: log (text, prefix=False, end='')
     log_write('send packets:')
-    problem_id = wolf.query({'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']})
+    problem_id = wolf.query(
+        {'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']}
+    )
     assert isinstance(problem_id, int)
     log_write('.')
-    assert wolf.query({'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'], 'output': configuration['output-file']})
+    assert wolf.query({
+        'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'],
+        'output': configuration['output-file']
+    })
     log_write('.')
-    assert wolf.query({'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'], 'memory': configuration['memory-limit']})
+    assert wolf.query({
+        'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'],
+        'memory': configuration['memory-limit']
+    })
     log_write('.')
-    assert wolf.query({'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name, 'compiler': compiler, 'source': checker})
+    assert wolf.query({
+        'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name,
+        'compiler': compiler, 'source': checker
+    })
     log_write('.')
     for test in tests:
         with open(test, 'rb') as f:
@@ -334,10 +352,13 @@ def wolf_export( problem, configuration, global_config ):
         with open(test + '.a', 'rb') as f:
             data = f.read()
             answer = base64.b64encode(data).decode('ascii')
-        assert wolf.query({'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer})
+        assert wolf.query(
+            {'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer}
+        )
         log_write('.')
     log('', prefix='')
     log.info('uploaded, problem id: %d' % problem_id)
+
 
 def clean_problem ( problem ):
     global log, options
@@ -354,11 +375,13 @@ def clean_problem ( problem ):
         if not os.path.isdir (directory):
             continue
         for filename in os.listdir (directory):
-            ok = re.match ('^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename)
+            ok = re.match (
+                '^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename
+            )
             ok = ok or re.match('^\d+(.a)?$', filename)
             ok = ok or filename in ("input", "output")
             if ok:
-               os.remove (os.path.join (directory, filename))
+                os.remove (os.path.join (directory, filename))
             for suffix in heuristic.suffixes_all ():
                 if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
                     continue
@@ -370,70 +393,79 @@ def clean_problem ( problem ):
                 continue
             if not cleaner.run ():
                 log.warning ('%s returned non-zero' % cleaner)
-    if remove_tests and (os.path.isdir ('source') or os.path.isdir ('src')) and os.path.isdir ('tests'):
+    if (remove_tests and
+        (os.path.isdir ('source') or os.path.isdir ('src')) and
+        os.path.isdir ('tests')
+    ):
         os.rmdir ('tests')
     for directory in ['.temp', '.tests']:
         if os.path.isdir (directory):
             os.rmdir (directory)
 
+
 def prepare():
-  import resource as r
-  import signal as s
-  global resource, signal
-  resource, signal = r, s
-  resource.setrlimit(resource.RLIMIT_STACK, (-1, -1))
+    import resource as r
+    import signal as s
+    global resource, signal
+    resource, signal = r, s
+    resource.setrlimit(resource.RLIMIT_STACK, (-1, -1))
 
+
+# TODO: move into separate file
 def prepare_windows():
-  # Это выглядит как мерзкий, грязный хак, каковым является вообще любая работа с windows.
-  import ctypes
+    # Это выглядит как мерзкий, грязный хак, каковым является вообще любая работа с windows.
+    import ctypes
 
-  STD_INPUT_HANDLE = -10
-  STD_OUTPUT_HANDLE = -11
-  STD_ERROR_HANDLE = -12
+    STD_INPUT_HANDLE = -10
+    STD_OUTPUT_HANDLE = -11
+    STD_ERROR_HANDLE = -12
 
-  FOREGROUND_BLUE = 0x01
-  FOREGROUND_GREEN = 0x02
-  FOREGROUND_RED = 0x04
-  FOREGROUND_INTENSITY = 0x08
-  BACKGROUND_BLUE = 0x10
-  BACKGROUND_GREEN = 0x20
-  BACKGROUND_RED = 0x40
-  BACKGROUND_INTENSITY = 0x80
-  windows_colors = [
-      0,  # black
-      FOREGROUND_RED,  # red
-      FOREGROUND_GREEN,  # green
-      FOREGROUND_GREEN | FOREGROUND_RED,  # brown
-      FOREGROUND_BLUE,  # blue
-      FOREGROUND_BLUE | FOREGROUND_RED,  # magenta
-      FOREGROUND_BLUE | FOREGROUND_GREEN,  # skyblue
-      FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED,  # gray
-      0, 0, 0
-  ]
-  def windows_write( text, end='' ):
-    text += end
-    handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
-    pieces = text.split('\x1b[')
-    sys.stdout.write(pieces[0])
-    sys.stdout.flush()
-    for str in pieces[1:]:
-      color, line = str.split('m', 1)
-      numbers = [int(x) for x in color.split(';')]
-      mask = 0
-      for x in numbers:
-        if x == 0:
-          mask |= windows_colors[7]
-        if x == 1:
-          mask |= FOREGROUND_INTENSITY
-        if 30 <= x <= 39:
-          mask |= windows_colors[x - 30]
-      ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
-      sys.stdout.write(line.encode('utf8').decode('ibm866'))
-      sys.stdout.flush()
-  def windows_convert_tests( tests ):
-    pass
-  log.write = windows_write
-  convert_tests = windows_convert_tests
+    FOREGROUND_BLUE = 0x01
+    FOREGROUND_GREEN = 0x02
+    FOREGROUND_RED = 0x04
+    FOREGROUND_INTENSITY = 0x08
+    BACKGROUND_BLUE = 0x10
+    BACKGROUND_GREEN = 0x20
+    BACKGROUND_RED = 0x40
+    BACKGROUND_INTENSITY = 0x80
+    windows_colors = [
+        0,  # black
+        FOREGROUND_RED,  # red
+        FOREGROUND_GREEN,  # green
+        FOREGROUND_GREEN | FOREGROUND_RED,  # brown
+        FOREGROUND_BLUE,  # blue
+        FOREGROUND_BLUE | FOREGROUND_RED,  # magenta
+        FOREGROUND_BLUE | FOREGROUND_GREEN,  # skyblue
+        FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED,  # gray
+        0, 0, 0
+    ]
+
+    def windows_write( text, end='' ):
+        text += end
+        handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+        pieces = text.split('\x1b[')
+        sys.stdout.write(pieces[0])
+        sys.stdout.flush()
+        for str in pieces[1:]:
+            color, line = str.split('m', 1)
+            numbers = [int(x) for x in color.split(';')]
+            mask = 0
+            for x in numbers:
+                if x == 0:
+                    mask |= windows_colors[7]
+                if x == 1:
+                    mask |= FOREGROUND_INTENSITY
+                if 30 <= x <= 39:
+                    mask |= windows_colors[x - 30]
+            ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
+            sys.stdout.write(line.encode('utf8').decode('ibm866'))
+            sys.stdout.flush()
+
+    def windows_convert_tests( tests ):
+        pass
+
+    log.write = windows_write
+    convert_tests = windows_convert_tests
 
 
 class T:
@@ -510,7 +542,9 @@ class T:
     def __call__ ( self, arguments ):
         command = arguments[0]
         actions = {
-            x: lambda command, args, y=y: self.__foreach (lambda problem: y (problem, args)) for x, y in [
+            x: (
+                lambda command, args, y=y: self.__foreach (lambda problem: y (problem, args))
+            ) for x, y in [
                 ('build', self.__build),
                 ('check', self.__check),
                 ('clean', self.__clean),
@@ -540,13 +574,15 @@ class T:
         else:
             self.__problems = [heuristic.problem_open (t=self)]
         for problem in self.__problems:
-           if problem.uuid is None:
-              problem.create ()
+            if problem.uuid is None:
+                problem.create ()
 
 
 def arguments_parse():
     parser = argparse.ArgumentParser (description='t.py: programming contest problem helper')
-    parser.add_argument ('--no-remove-tests', '-t', dest='remove_tests', action='store_false', default=True)
+    parser.add_argument (
+        '--no-remove-tests', '-t', dest='remove_tests', action='store_false', default=True
+    )
     parser.add_argument ('--recursive', '-r', dest='recursive', action='store_true', default=False)
     parser.add_argument ('--verbose', '-v', dest='verbose', action='store_true', default=False)
     parser.add_argument ('command', nargs='+')
@@ -560,7 +596,7 @@ def arguments_parse():
 
 
 if sys.platform == 'win32':  # if os is outdated
-  prepare = prepare_windows
+    prepare = prepare_windows
 
 options, arguments = arguments_parse()
 

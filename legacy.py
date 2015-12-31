@@ -1,18 +1,19 @@
 
 class Configuration:
     def __init__( self ):
-      self.compilers = {}
-      self.detector = {}
+        self.compilers = {}
+        self.detector = {}
+
     def detect_language( self, source ):
-      if source.endswith('Check.java'):
-          return self.compilers["java.checker"]
-      suffix = os.path.splitext(source)[1][1:]
-      if suffix not in self.detector:
-        return None
-      detector = self.detector[suffix]
-      if type(detector) == str:
-        return self.compilers[detector]
-      return self.compilers[detector(source)]
+        if source.endswith('Check.java'):
+            return self.compilers["java.checker"]
+        suffix = os.path.splitext(source)[1][1:]
+        if suffix not in self.detector:
+            return None
+        detector = self.detector[suffix]
+        if type(detector) == str:
+            return self.compilers[detector]
+        return self.compilers[detector(source)]
 
     @staticmethod
     def read_configuration( path ):
@@ -29,11 +30,14 @@ class Configuration:
         ]:
             if name in configuration:
                 continue
-            log.warning("%s isn't set for problem %s, using default (%s)" % (name, configuration['id'], repr(value)))
+            log.warning("%s isn't set for problem %s, using default (%s)" %
+                (name, configuration['id'], repr(value)))
             configuration[name] = value
             configuration['time-limit'] = float(configuration['time-limit'])
         for name in ['memory-limit']:
-            for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
+            for suffix, multiplier in [
+                ('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)
+            ]:
                 if isinstance(configuration[name], str) and configuration[name].endswith(suffix):
                     configuration[name] = int(configuration[name].replace(suffix, '')) * multiplier
         if 'source-directory' not in configuration:

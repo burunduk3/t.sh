@@ -19,15 +19,28 @@
 
 import sys
 
+
 class Error ( Exception ):
     def __init__ ( self, comment ):
         super (Error, self).__init__ (comment)
+
     @classmethod
     def throw ( cls, *args ):
         raise cls (*args)
 
+
+class Module:
+    def __init__ ( self, t ):
+        self._t = t
+
+    @property
+    def _log ( self):
+        return self._t.log
+
+
 class Log:
     DEBUG, INFO, NOTICE, WARNING, ERROR, FATAL = range (6)
+
     def __init__( self ):
         self.__verbose = Log.INFO
         self.__color = {
@@ -62,8 +75,10 @@ class Log:
             return
         if prefix:
             # TODO: accurate verbose output?
-            # self.write ("\x1b[1;%dm[t:%s,verbose]\x1b[0m %s" % (self.__color[level], self.__message[level], message), end=end)
-            message = "[t:%s] \x1b[1;%dm%s\x1b[0m%s" % (self.__message[level], self.__color[level], message, end)
+            # self.write ("\x1b[1;%dm[t:%s,verbose]\x1b[0m %s" %
+            # (self.__color[level], self.__message[level], message), end=end)
+            message = "[t:%s] \x1b[1;%dm%s\x1b[0m%s" % \
+                (self.__message[level], self.__color[level], message, end)
         else:
             message = message + end
         self.__write (message)
