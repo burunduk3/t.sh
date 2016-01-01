@@ -20,6 +20,7 @@
 import os.path
 
 import common
+import compilers
 from datalog import Datalog
 import problem
 
@@ -60,8 +61,8 @@ def compiler_detect ( path ):
 
 
 def set_compilers ( value ):
-    global compilers
-    compilers = value
+    global languages
+    languages = value
 
 
 class Source:
@@ -80,8 +81,8 @@ class Source:
             self.__compiler == other.__compiler
 
     def compile ( self ):
-        global compilers
-        compiler = compilers[self.__compiler]
+        global languages 
+        compiler = languages[self.__compiler]
         self.__executable = compiler (self.__path)
         if self.__executable is None:
             raise common.Error ("%s: compilation error" % self.__path)
@@ -267,5 +268,148 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
 
     p.canonical (routine)
     return p
+
+
+# === COMPILERS CONFIGURATION ==
+# Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
+# TODO: move to heuristics
+
+def compilers_configure ( configuration, t ):
+
+    # script = lambda interpeter: lambda binary: Executable (binary, [interpeter])
+    def script ( interpeter ):
+        def result ( binary ):
+            nonlocal interpeter
+            return compilers.Executable ([interpeter, binary])
+        return result
+
+    executable_default = lambda binary: compilers.Executable.local (binary)
+    binary_default = lambda source: os.path.splitext(source)[0]
+
+    java_cp_suffix = os.environ.get('CLASSPATH', None)
+    if java_cp_suffix is None:
+        java_cp_suffix = ""
+    else:
+        java_cp_suffix = ":" + java_cp_suffix
+
+    # something strange
+    # include_path = '../../../include/testlib.ifmo'
+    # include_path = '/home/burunduk3/user/include/testlib.ifmo'
+    include_path = '/home/burunduk3/user/include'
+    flags_c = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CFLAGS'].split()
+    flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
+
+    L = compilers.Language
+    C = compilers.Compiler
+    E = compilers.Executable
+    result = {
+        'bash': L (executable=script ('bash'), t=t),
+        'perl': L (executable=script ('perl'), t=t),
+        'python2': L (executable=script ('python2'), t=t),
+        'python3': L (executable=script ('python3'), t=t),
+        'c': L (
+            binary=binary_default,
+            compiler=C (
+                ['gcc'] + flags_c + ['-x', 'c'],
+                lambda source, target: ['-o', target, source],
+                name='c.gcc'
+            ),
+            executable=executable_default,
+            t=t
+        ),
+        'c++': L (
+            binary=binary_default,
+            compiler=C (
+                ['g++'] + flags_cpp + ['-x', 'c++'],
+                lambda source, target: ['-o', target, source],
+                name='c++.gcc'
+            ),
+            executable=executable_default,
+            t=t
+        ),
+        'delphi': L (
+            binary=binary_default,
+            compiler=C (
+                [
+                    'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path,
+                    '-Fi' + include_path, '-d__T_SH__'
+                ],
+                lambda source, target: ['-o' + target, source],
+                name='delphi.fpc'
+            ),
+            # command=lambda source, binary: [
+            #     'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__',
+            #     '-o'+binary, source
+            # ],
+            executable=executable_default,
+            t=t
+        ),
+        'java': L (
+            binary=lambda source: os.path.splitext (source)[0] + '.class',
+            compiler=C (
+                ['javac'],
+                lambda source, target: ['-cp', os.path.dirname (source), source],
+                name='java'
+            ),
+            executable=lambda binary: E ([
+                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
+                '-cp', os.path.dirname (binary) + java_cp_suffix,
+                os.path.splitext (os.path.basename (binary))[0]
+            ], name=binary),
+            t=t
+        ),
+        'java.checker': L (
+            binary=lambda source: os.path.splitext(source)[0] + '.class',
+            compiler=C (
+                ['javac'],
+                lambda source, target: ['-cp', os.path.dirname (source), source],
+                name='checker.java'
+            ),
+            executable=lambda binary: E ([
+                'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
+                "-cp", os.path.dirname(binary) + java_cp_suffix,
+                "ru.ifmo.testlib.CheckerFramework", os.path.splitext (os.path.basename (binary))[0]
+            ], name=binary),
+            t=t
+        ),
+        'pascal': L (
+            binary=binary_default,
+            compiler=C (
+                [
+                    'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
+                    '-d__T_SH__'
+                ],
+                lambda source, target: ['-o' + target, source],
+                name='pascal.fpc'
+            ),
+            executable=executable_default,
+            t=t
+        ),
+    }
+    set_compilers (result)
+
+    if configuration is None:
+        return
+
+    configuration.compilers = result
+
+    def detector_python( source ):
+        with open (source, 'r') as f:
+            shebang = f.readline ()
+            if shebang[0:2] != '#!':
+                shebang = ''
+            if 'python3' in shebang:
+                return 'python3'
+            elif 'python2' in shebang:
+                return 'python2'
+            else:
+                # python3 is default
+                return 'python3'
+
+    configuration.detector = {
+        'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
+        'pas': 'pascal', 'dpr': 'delphi',
+        'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
+    }
 
 

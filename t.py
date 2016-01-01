@@ -33,7 +33,6 @@ from problem import Problem
 import heuristic
 import help
 import legacy
-from compilers import compilers_configure
 from invoker import Invoker, RunResult
 
 # === CHANGE LOG ===
@@ -605,7 +604,7 @@ prepare()
 
 configuration = legacy.Configuration()
 tpy = T (log, options, configuration)
-compilers_configure ( configuration, tpy )
+heuristic.compilers_configure ( configuration, tpy )
 
 try:
     if options['verbose']:
