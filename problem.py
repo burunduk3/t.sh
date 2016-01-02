@@ -25,8 +25,9 @@ import re
 import shutil
 import struct
 
-import common as t
-from datalog import Datalog, Type, String, Float, Integer
+from tlib.common import Error
+from tlib.datalog import Datalog, Type
+from tlib import types
 import heuristic
 
 
@@ -140,7 +141,7 @@ class Problem (Datalog):
             def run ( self ):
                 r = self.__source.run (directory=self.__directory)
                 if not r:
-                    raise t.Error ('generator failed: %s' % self)
+                    raise Error ('generator failed: %s' % self)
                 return self.__problem.autofind_tests ('tests')
 
         @classmethod
@@ -191,19 +192,19 @@ class Problem (Datalog):
         return self.__uuid
 
     def __lev_name_short ( self, data ):
-        self.__name_short = String.parse (next (data))
+        self.__name_short = types.String.parse (data)
         return True
 
     def __lev_limit_time ( self, data ):
-        self.__limit_time = Float.parse (next (data))
+        self.__limit_time = types.Float.parse (data)
         return True
 
     def __lev_limit_idle ( self, data ):
-        self.__limit_idle = Float.parse (next (data))
+        self.__limit_idle = types.Float.parse (data)
         return True
 
     def __lev_limit_memory ( self, data ):
-        self.__limit_memory = Integer.parse (next (data))
+        self.__limit_memory = types.Integer.parse (data)
         return True
 
     def __lev_input_std ( self, data ):
@@ -279,32 +280,44 @@ class Problem (Datalog):
     def create ( self, uuid=None ):
         if uuid is None:
             uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
-        return self._commit (Problem.LEV_CREATE, String (uuid))
+        return self._commit (Problem.LEV_CREATE, types.String (uuid))
 
     path = property (lambda self: self.__path)
     uuid = property (lambda self: self.__uuid)
 
     def __set_name_short ( self, value ):
-        return self._commit (Problem.LEV_NAME_SHORT, String (value))
-    name_short = property (lambda self: self.__name_short.value, __set_name_short)
+        return self._commit (Problem.LEV_NAME_SHORT, types.String (value))
+    name_short = property (
+        lambda self: self.__name_short.value if self.__name_short is not None else None,
+        __set_name_short
+    )
 
     def __set_limit_time ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_TIME, Float (value))
-    limit_time = property (lambda self: self.__limit_time.value, __set_limit_time)
+        return self._commit (Problem.LEV_LIMIT_TIME, types.Float (value))
+    limit_time = property (
+        lambda self: self.__limit_time.value if self.__limit_time is not None else None,
+        __set_limit_time
+    )
 
     def __set_limit_idle ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_IDLE, Float (value))
-    limit_idle = property (lambda self: self.__limit_idle.value, __set_limit_idle)
+        return self._commit (Problem.LEV_LIMIT_IDLE, types.Float (value))
+    limit_idle = property (
+        lambda self: self.__limit_idle.value if self.__limit_idle is not None else None,
+        __set_limit_idle
+    )
 
     def __set_limit_memory ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_MEMORY, Integer (value))
-    limit_memory = property (lambda self: self.__limit_memory.value, __set_limit_memory)
+        return self._commit (Problem.LEV_LIMIT_MEMORY, types.Integer (value))
+    limit_memory = property (
+        lambda self: self.__limit_memory.value if self.__limit_memory is not None else None,
+        __set_limit_memory
+    )
 
     def __set_input_std ( self ):
         return self._commit (Problem.LEV_INPUT_STD)
 
     def __set_input_name ( self, value ):
-        return self._commit (Problem.LEV_INPUT, String (value))
+        return self._commit (Problem.LEV_INPUT, types.String (value))
 
     def __set_input ( self, value ):
         if type (value) is Problem.File.Std:
@@ -318,7 +331,7 @@ class Problem (Datalog):
         return self._commit (Problem.LEV_OUTPUT_STD)
 
     def __set_output_name ( self, value ):
-        return self._commit (Problem.LEV_OUTPUT, String (value))
+        return self._commit (Problem.LEV_OUTPUT, types.String (value))
 
     def __set_output ( self, value ):
         if type (value) is Problem.File.Std:
@@ -329,11 +342,11 @@ class Problem (Datalog):
     output = property (lambda self: self.__output, __set_output)
 
     def __set_checker ( self, value ):
-        return self._commit (Problem.LEV_CHECKER, String (value.path), String (value.compiler))
+        return self._commit (Problem.LEV_CHECKER, types.String (value.path), types.String (value.compiler))
     checker = property (lambda self: self.__checker, __set_checker)
 
     def __set_solution ( self, value ):
-        return self._commit (Problem.LEV_SOLUTION, String (value.path), String (value.compiler))
+        return self._commit (Problem.LEV_SOLUTION, types.String (value.path), types.String (value.compiler))
     solution = property (lambda self: self.__solution, __set_solution)
 
     def __set_generator_auto ( self ):
@@ -341,13 +354,13 @@ class Problem (Datalog):
 
     def __set_generator_external ( self, value, directory ):
         return self._commit (
-            Problem.LEV_GENERATOR_EXT, String (value.path), String (value.compiler),
-            String (directory)
+            Problem.LEV_GENERATOR_EXT, types.String (value.path), types.String (value.compiler),
+            types.String (directory)
         )
     generator = property (lambda self: self.__generator)
 
     def __set_validator ( self, value ):
-        return self._commit (Problem.LEV_VALIDATOR, String (value.path), String (value.compiler))
+        return self._commit (Problem.LEV_VALIDATOR, types.String (value.path), types.String (value.compiler))
     validator = property (lambda self: self.__validator, __set_validator)
 
     name = property (
@@ -403,8 +416,8 @@ class Problem (Datalog):
     def __autodetect_checker ( self ):
         checker = None
         for name in [
-            'check', 'checker', 'check_' + self.__name_short, 'checker_' + self.__name_short,
-            'Check'
+            'check', 'checker', 'check_' + self.__name_short.value,
+            'checker_' + self.__name_short.value, 'Check'
         ]:
             checker = heuristic.Source.find (name)
             if checker is not None:

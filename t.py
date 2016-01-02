@@ -28,7 +28,7 @@ import base64
 import socket
 import argparse
 
-import common as t
+from tlib.common import Error, Log
 from problem import Problem
 import heuristic
 import help
@@ -43,7 +43,7 @@ from invoker import Invoker, RunResult
 def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
     global log
     if problem.solution is None:
-        raise t.Error ('[problem %s]: solution not found' % problem.name)
+        raise Error ('[problem %s]: solution not found' % problem.name)
     problem.solution.compile ()
     if not quiet:
         log ('generate answers', end='')
@@ -68,7 +68,7 @@ def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
             stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None
         )
         if not r:
-            raise t.Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
+            raise Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
         shutil.copy (output_name, test + '.a')
     if not quiet:
         log ('done', prefix=False)
@@ -105,10 +105,10 @@ def build_problem ( problem ):
     assert generator is not None
     result = generator.run ()
     if not result:
-        raise t.Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
+        raise Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
     problem.research_tests ()
     if not problem.tests:
-        raise t.Error ('[problem %s]: no tests found' % problem.name)
+        raise Error ('[problem %s]: no tests found' % problem.name)
     log('tests (total: %d): [%s]' % (len (problem.tests), ' '.join (problem.tests)))
     # TODO: convert_tests(tests), move to generation, for copy
     validator = problem.validator
@@ -119,7 +119,7 @@ def build_problem ( problem ):
             log ('.', prefix=False, end='')
             if validator.run (test, stdin=open(test, 'r')):
                 continue
-            raise t.Error('[problem %s]: validation failed: %s' % (problem.name, test))
+            raise Error('[problem %s]: validation failed: %s' % (problem.name, test))
         log ('done', prefix=False)
     testset_answers (problem)
 
@@ -159,7 +159,7 @@ class Test:
         # TODO: validate test
         testset_answers (self.__problem, tests=[path], force=True, quiet=True)
         if not result:
-            raise t.Error ('generator (%s) failed' % self.__generator)
+            raise Error ('generator (%s) failed' % self.__generator)
             return None
         return path
 
@@ -178,14 +178,14 @@ def tests_export ( problem ):
         problem.research_tests ()
     tests = [Test.file (x) for x in problem.tests]
     if not tests:
-        raise t.Error ('[problem %s]: no tests found' % problem.name)
+        raise Error ('[problem %s]: no tests found' % problem.name)
     if not os.path.isdir ('tests'):
         os.mkdir ('tests')
     pattern = '%02d'
     if len (tests) >= 100:
         pattern = '%03d'
     if len (tests) >= 1000:
-        raise t.Error ("[problem %s]: too many tests (%d)" % (problem.name, len (tests)))
+        raise Error ("[problem %s]: too many tests (%d)" % (problem.name, len (tests)))
     n = 0
     for i, x in enumerate (tests):
         test = x.create ()
@@ -204,15 +204,15 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
             problem.research_tests ()
         tests = [Test.file (x) for x in problem.tests]
     if not tests:
-        raise t.Error ('[problem %s]: no tests found' % problem.name)
+        raise Error ('[problem %s]: no tests found' % problem.name)
     checker = problem.checker
     if checker is None:
-        raise t.Error ('[problem %s]: no checker found' % problem.name)
+        raise Error ('[problem %s]: no checker found' % problem.name)
     checker.compile ()
     if solution is None:
         solution = problem.solution
     if solution is None:
-        raise t.Error ('[problem %s]: no solution found' % problem.name)
+        raise Error ('[problem %s]: no solution found' % problem.name)
     solution.compile ()
     if not quiet:
         log.info('checking solution: %s' % solution)
@@ -238,15 +238,15 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
         )
         good = False
         if r.result == RunResult.RUNTIME:
-            raise t.Error ('Runtime error (%s).' % r.comment)
+            raise Error ('Runtime error (%s).' % r.comment)
         elif r.result == RunResult.TIME_LIMIT:
-            raise t.Error ('Time limit exceeded (%s).' % r.comment)
+            raise Error ('Time limit exceeded (%s).' % r.comment)
         elif r.result == RunResult.MEMORY_LIMIT:
-            raise t.Error ('Memory limit exceeded (%s)' % r.comment)
+            raise Error ('Memory limit exceeded (%s)' % r.comment)
         elif r.result == RunResult.OK:
             good = True
         else:
-            raise t.Error ('Invokation failed (%s).' % r.comment)
+            raise Error ('Invokation failed (%s).' % r.comment)
         if not good:
             return False
         log ('* ', prefix=False, end='')
@@ -288,7 +288,7 @@ def wolf_export( problem, configuration, global_config ):
     log.info("== upload problem %s" % configuration['id'])
     os.chdir(configuration['tests-directory'])
     if 'full' not in configuration:
-        raise t.Error ("cannot full name for problem %s" % configuration['id'])
+        raise Error ("cannot full name for problem %s" % configuration['id'])
     checker = None
     for checker_name in [
         'check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']
@@ -297,7 +297,7 @@ def wolf_export( problem, configuration, global_config ):
         if checker is not None:
             break
     if checker is None:
-        raise t.Error ('cannot find checker')
+        raise Error ('cannot find checker')
     wolf_compilers = {
         'delphi': 'win32.checker.delphi.ifmo',
         # 'delphi': 'win32.checker.delphi.kitten',
@@ -483,14 +483,14 @@ class T:
     def __build ( self, problem, arguments ):
         build_problem (problem)
         if not check_problem (problem, t=self):
-            raise t.Error ("problem check failed")
+            raise Error ("problem check failed")
 
     def __check ( self, problem, arguments ):
         solution = None
         if len(arguments) >= 1:
             solution = heuristic.Source.find (arguments[0], prefix=problem.name_short)
             if solution is None:
-                raise t.Error ("solution not found: '%s'" % arguments[0])
+                raise Error ("solution not found: '%s'" % arguments[0])
         check_problem (problem, solution=solution, t=self)
 
     def __clean ( self, problem, arguments ):
@@ -500,7 +500,7 @@ class T:
         try:
             generator, solution = arguments[:2]
         except ValueError as error:
-            raise t.Error ("usage: t.py stress <generator> <solution>") from error
+            raise Error ("usage: t.py stress <generator> <solution>") from error
         generator, solution = [heuristic.Source.find (x) for x in (generator, solution)]
         r = True
         while r:
@@ -529,7 +529,7 @@ class T:
         heuristic.problem_rescan (problem, t=self)
 
     def __problem_set ( self, problem, arguments ):
-        raise t.Error ("TODO")
+        raise Error ("TODO")
 
     def __help ( self, par='disclaimer' ):
         sys.stdout.write ({
@@ -562,7 +562,7 @@ class T:
         try:
             action = actions[command]
         except KeyError as error:
-            raise t.Error ("unknown command: '%s'" % command) from error
+            raise Error ("unknown command: '%s'" % command) from error
         action (command, arguments[1:])
 
     def __explore ( self, recursive=None ):
@@ -599,7 +599,7 @@ if sys.platform == 'win32':  # if os is outdated
 
 options, arguments = arguments_parse()
 
-log = t.Log()
+log = Log()
 prepare()
 
 configuration = legacy.Configuration()
@@ -610,7 +610,7 @@ try:
     if options['verbose']:
         log.verbose ()
     tpy (arguments)
-except t.Error as e:
+except Error as e:
     log.error (e)
     sys.exit (1)
 except KeyboardInterrupt:

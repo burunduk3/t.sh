@@ -19,9 +19,9 @@
 
 import os.path
 
-import common
+from tlib.common import Error
+from tlib.datalog import Datalog
 import compilers
-from datalog import Datalog
 import problem
 
 
@@ -85,7 +85,7 @@ class Source:
         compiler = languages[self.__compiler]
         self.__executable = compiler (self.__path)
         if self.__executable is None:
-            raise common.Error ("%s: compilation error" % self.__path)
+            raise Error ("%s: compilation error" % self.__path)
 
     def run ( self, *arguments, **kwargs ):
         if self.__executable is None:
@@ -223,7 +223,7 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
     try:
         p = problem.Problem (os.path.join (path, datalog), create=(force is not None), t=t)
     except Datalog.NotFound as error:
-        raise common.Error ("not a problem: '%s'" % path) from error
+        raise Error ("not a problem: '%s'" % path) from error
     if p.uuid is None:
         p.create ()
     if force is None:

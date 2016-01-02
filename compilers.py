@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from common import Error, Module
+from tlib.common import Error, Module
 import heuristic
 
 
