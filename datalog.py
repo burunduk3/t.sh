@@ -17,7 +17,10 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+import base64
+import re
 import time
+import struct
 
 
 class Type:
@@ -32,6 +35,78 @@ class Type:
 
     def __eq__ ( self, x ):
         assert False
+
+
+class String (Type):
+    def __init__ ( self, value ):
+        self.__value = str (value)
+
+    value = property (lambda self: self.__value)
+
+    def __str__ ( self ):
+        return self.__value
+
+    def dump ( self ):
+        if re.match ("^[0-9a-zA-Zа-яА-Я\\._+-]+$", self.__value):
+            return self.__value
+        return '"' + \
+            self.__value. \
+            replace ('\\', '\\\\').replace ('\n', '\\n').replace ('\t', '\\t'). \
+            replace ('\0', '\\0').replace ('\r', '\\r').replace ('"', '\\"') + \
+            '"'
+
+    def __eq__ ( self, x ):
+        return self.__value == x.__value
+
+    # @classmethod
+    # def dump ( cls, value ):
+    #     return cls (value).dump ()
+
+    @classmethod
+    def parse ( cls, value ):
+        return cls (value)
+
+
+class Float (Type):
+    def __init__ ( self, value ):
+        self.__value = float (value)
+
+    value = property (lambda self: self.__value)
+
+    def __str__ ( self ):
+        return '%.20f' % self.__value
+
+    def dump ( self ):
+        return base64.b16encode (struct.pack ('d', self.__value)).decode ('ascii')
+
+    def __eq__ ( self, x ):
+        return self.__value == x.__value
+
+    @classmethod
+    def parse ( cls, value ):
+        if re.match ('^[0-9a-f]{16}$', value):
+            value = struct.unpack ('d', base64.b16decode (value))[0]
+        return cls (value)
+
+
+class Integer (Type):
+    def __init__ ( self, value ):
+        self.__value = int (value)
+
+    value = property (lambda self: self.__value)
+
+    def __str__ ( self ):
+        return '%d' % self.__value
+
+    def dump ( self ):
+        return str (self.__value)
+
+    def __eq__ ( self, x ):
+        return self.__value == x.__value
+
+    @classmethod
+    def parse ( cls, value ):
+        return cls (value)
 
 
 class Datalog:
@@ -53,23 +128,61 @@ class Datalog:
         self.__datalog = open (datalog, 'a')
 
     def __precheck ( self, line ):
-        data = line.split ()
-        if self._time > int(data[0]):
+        ts, event, data = line.split (' ', 2)
+        if self._time > int (ts):
             return None
-        event = data[1]
         if event not in self._actions:
             return None
         return True
 
-    def __event ( self, line ):
-        data = line.split ()
-        self._time = int(data[0])
-        event = data[1]
-        return self._actions[event] (*data[2:])
+    @staticmethod
+    def __parse ( line ):
+        token = ''
 
-    def _commit ( self, *args, check=True ):
+        def state_default ( x ):
+            nonlocal token
+            if x == ' ' or x == '\n':
+                if len (token):
+                    yield token
+                token = ''
+            elif x != '"':
+                token += x
+            else:
+                return state_str
+            return state_default
+
+        def state_str ( x ):
+            nonlocal token
+            if x == '"':
+                yield token
+                token = ''
+                return state_default
+            if x == '\\':
+                return state_backslash
+            token += x
+            return state_str
+
+        def state_backslash ( x ):
+            nonlocal token
+            conv = {'n': '\n', 'r': '\r', 't': '\t', '0': '\0'}
+            token += conv.get (x, x)
+            return state_str
+
+        state = state_default
+        for x in line:
+            state = yield from state (x)
+        yield from state ('\n')
+        assert state is state_default
+
+
+    def __event ( self, line ):
+        ts, event, data = line.split (' ', 2)
+        self._time = int (ts)
+        return self._actions[event] ( self.__parse (data))
+
+    def _commit ( self, event, *args, check=True ):
         now = str (int (time.time ()))
-        line = ' '.join ([now] + list (args))  # TODO: spaces and so on
+        line = ' '.join ([now, event] + [x.dump () for x in args])
         if self.__precheck (line) is None:
             assert not check
             return None

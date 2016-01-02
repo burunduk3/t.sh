@@ -26,7 +26,7 @@ import shutil
 import struct
 
 import common as t
-from datalog import Datalog, Type
+from datalog import Datalog, Type, String, Float, Integer
 import heuristic
 
 
@@ -165,84 +165,92 @@ class Problem (Datalog):
         self.__validator = None
         self.__checker = None
         super (Problem, self).__init__ (datalog, actions={
-            Problem.LEV_CREATE: lambda uuid: self.__lev_create (uuid)
+            Problem.LEV_CREATE: self.__lev_create
         }, create=create, t=t)
         self.__tests = None
 
     # handle logevents
 
-    def __lev_create ( self, uuid ):
-        self.__uuid = uuid
+    def __lev_create ( self, data ):
+        self.__uuid = next (data)
         self._actions = {
-            Problem.LEV_NAME_SHORT: lambda value: self.__lev_name_short (value),
-            Problem.LEV_LIMIT_TIME: lambda value: self.__lev_limit_time (value),
-            Problem.LEV_LIMIT_IDLE: lambda value: self.__lev_limit_idle (value),
-            Problem.LEV_LIMIT_MEMORY: lambda value: self.__lev_limit_memory (value),
-            Problem.LEV_INPUT: lambda value: self.__lev_input_name (value),
-            Problem.LEV_INPUT_STD: lambda: self.__lev_input_std (),
-            Problem.LEV_OUTPUT: lambda value: self.__lev_output_name (value),
-            Problem.LEV_OUTPUT_STD: lambda: self.__lev_output_std (),
-            Problem.LEV_CHECKER: lambda path, compiler: self.__lev_checker (path, compiler),
-            Problem.LEV_SOLUTION: lambda path, compiler: self.__lev_solution (path, compiler),
-            Problem.LEV_GENERATOR_AUTO: lambda: self.__lev_generator_auto (),
-            Problem.LEV_GENERATOR_EXT: lambda path, compiler, directory:
-                self.__lev_generator_external (path, compiler, directory),
-            Problem.LEV_VALIDATOR: lambda path, compiler: self.__lev_validator (path, compiler)
+            Problem.LEV_NAME_SHORT: self.__lev_name_short,
+            Problem.LEV_LIMIT_TIME: self.__lev_limit_time,
+            Problem.LEV_LIMIT_IDLE: self.__lev_limit_idle,
+            Problem.LEV_LIMIT_MEMORY: self.__lev_limit_memory,
+            Problem.LEV_INPUT: self.__lev_input_name,
+            Problem.LEV_INPUT_STD: self.__lev_input_std,
+            Problem.LEV_OUTPUT: self.__lev_output_name,
+            Problem.LEV_OUTPUT_STD: self.__lev_output_std,
+            Problem.LEV_CHECKER: self.__lev_checker,
+            Problem.LEV_SOLUTION: self.__lev_solution,
+            Problem.LEV_GENERATOR_AUTO: self.__lev_generator_auto,
+            Problem.LEV_GENERATOR_EXT: self.__lev_generator_external,
+            Problem.LEV_VALIDATOR: self.__lev_validator
         }
-        return uuid
+        return self.__uuid
 
-    def __lev_name_short ( self, value ):
-        self.__name_short = value
+    def __lev_name_short ( self, data ):
+        self.__name_short = String.parse (next (data))
         return True
 
-    def __lev_limit_time ( self, value ):
-        self.__limit_time = float (value)
+    def __lev_limit_time ( self, data ):
+        self.__limit_time = Float.parse (next (data))
         return True
 
-    def __lev_limit_idle ( self, value ):
-        self.__limit_idle = float (value)
+    def __lev_limit_idle ( self, data ):
+        self.__limit_idle = Float.parse (next (data))
         return True
 
-    def __lev_limit_memory ( self, value ):
-        self.__limit_memory = int (value)
+    def __lev_limit_memory ( self, data ):
+        self.__limit_memory = Integer.parse (next (data))
         return True
 
-    def __lev_input_std ( self ):
+    def __lev_input_std ( self, data ):
         self.__input = Problem.File.std (t=self._t)
         return True
 
-    def __lev_input_name ( self, value ):
-        self.__input = Problem.File.name (value, t=self._t)
+    def __lev_input_name ( self, data ):
+        self.__input = Problem.File.name (next (data), t=self._t)
         return True
 
-    def __lev_output_std ( self ):
+    def __lev_output_std ( self, data ):
         self.__output = Problem.File.std (t=self._t)
         return True
 
-    def __lev_output_name ( self, value ):
-        self.__output = Problem.File.name (value, t=self._t)
+    def __lev_output_name ( self, data ):
+        self.__output = Problem.File.name (next (data), t=self._t)
         return True
 
-    def __lev_checker ( self, path, compiler ):
-        self.__checker = heuristic.Source (path, compiler)
+    def __lev_checker ( self, data ):
+        path = next (data)
+        compiler = next (data)
+        self.__checker = heuristic.Source (path, compiler)  # WTF
         return True
 
-    def __lev_solution ( self, path, compiler ):
+    def __lev_solution ( self, data ):
+        path = next (data)
+        compiler = next (data)
         # TODO: move Source outside of heuristic
         self.__solution = heuristic.Source (path, compiler)
         return True
 
-    def __lev_generator_auto ( self ):
+    def __lev_generator_auto ( self, data ):
         self.__generator = Problem.Generator.auto (self, t=self._t)
         return True
 
-    def __lev_generator_external ( self, path, compiler, directory ):
+    def __lev_generator_external ( self, data ):
+        path = next (data)
+        compiler = next (data)
+        directory = next (data)
         self.__generator = Problem.Generator.external (
             self, heuristic.Source (path, compiler), directory, t=self._t
         )
         return True
 
-    def __lev_validator ( self, path, compiler ):
+    def __lev_validator ( self, data ):
+        path = next (data)
+        compiler = next (data)
         self.__validator = heuristic.Source (path, compiler)
         return True
 
@@ -271,32 +279,32 @@ class Problem (Datalog):
     def create ( self, uuid=None ):
         if uuid is None:
             uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
-        return self._commit (Problem.LEV_CREATE, uuid)
+        return self._commit (Problem.LEV_CREATE, String (uuid))
 
     path = property (lambda self: self.__path)
     uuid = property (lambda self: self.__uuid)
 
     def __set_name_short ( self, value ):
-        return self._commit (Problem.LEV_NAME_SHORT, str (value))
-    name_short = property (lambda self: self.__name_short, __set_name_short)
+        return self._commit (Problem.LEV_NAME_SHORT, String (value))
+    name_short = property (lambda self: self.__name_short.value, __set_name_short)
 
     def __set_limit_time ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_TIME, '%.20f' % float (value))  # TODO: exact pack
-    limit_time = property (lambda self: self.__limit_time, __set_limit_time)
+        return self._commit (Problem.LEV_LIMIT_TIME, Float (value))
+    limit_time = property (lambda self: self.__limit_time.value, __set_limit_time)
 
     def __set_limit_idle ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_IDLE, '%.20f' % float (value))  # TODO: exact pack
-    limit_idle = property (lambda self: self.__limit_idle, __set_limit_idle)
+        return self._commit (Problem.LEV_LIMIT_IDLE, Float (value))
+    limit_idle = property (lambda self: self.__limit_idle.value, __set_limit_idle)
 
     def __set_limit_memory ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_MEMORY, '%d' % int (value))
-    limit_memory = property (lambda self: self.__limit_memory, __set_limit_memory)
+        return self._commit (Problem.LEV_LIMIT_MEMORY, Integer (value))
+    limit_memory = property (lambda self: self.__limit_memory.value, __set_limit_memory)
 
     def __set_input_std ( self ):
         return self._commit (Problem.LEV_INPUT_STD)
 
     def __set_input_name ( self, value ):
-        return self._commit (Problem.LEV_INPUT, value)
+        return self._commit (Problem.LEV_INPUT, String (value))
 
     def __set_input ( self, value ):
         if type (value) is Problem.File.Std:
@@ -310,7 +318,7 @@ class Problem (Datalog):
         return self._commit (Problem.LEV_OUTPUT_STD)
 
     def __set_output_name ( self, value ):
-        return self._commit (Problem.LEV_OUTPUT, value)
+        return self._commit (Problem.LEV_OUTPUT, String (value))
 
     def __set_output ( self, value ):
         if type (value) is Problem.File.Std:
@@ -321,22 +329,25 @@ class Problem (Datalog):
     output = property (lambda self: self.__output, __set_output)
 
     def __set_checker ( self, value ):
-        return self._commit (Problem.LEV_CHECKER, value.path, value.compiler)
+        return self._commit (Problem.LEV_CHECKER, String (value.path), String (value.compiler))
     checker = property (lambda self: self.__checker, __set_checker)
 
     def __set_solution ( self, value ):
-        return self._commit (Problem.LEV_SOLUTION, value.path, value.compiler)
+        return self._commit (Problem.LEV_SOLUTION, String (value.path), String (value.compiler))
     solution = property (lambda self: self.__solution, __set_solution)
 
     def __set_generator_auto ( self ):
         return self._commit (Problem.LEV_GENERATOR_AUTO)
 
     def __set_generator_external ( self, value, directory ):
-        return self._commit (Problem.LEV_GENERATOR_EXT, value.path, value.compiler, directory )
+        return self._commit (
+            Problem.LEV_GENERATOR_EXT, String (value.path), String (value.compiler),
+            String (directory)
+        )
     generator = property (lambda self: self.__generator)
 
     def __set_validator ( self, value ):
-        return self._commit (Problem.LEV_VALIDATOR, value.path, value.compiler)
+        return self._commit (Problem.LEV_VALIDATOR, String (value.path), String (value.compiler))
     validator = property (lambda self: self.__validator, __set_validator)
 
     name = property (

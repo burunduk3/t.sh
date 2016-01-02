@@ -81,7 +81,7 @@ class Source:
             self.__compiler == other.__compiler
 
     def compile ( self ):
-        global languages 
+        global languages
         compiler = languages[self.__compiler]
         self.__executable = compiler (self.__path)
         if self.__executable is None:
