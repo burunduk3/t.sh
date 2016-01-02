@@ -259,7 +259,7 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
 
 def find_source( path ):
     # used in Wolf
-    return heuristic.Source.find (path)
+    return heuristic.source_find (path)
 
 
 class WolfConnection:
@@ -387,7 +387,7 @@ def clean_problem ( problem ):
                 os.remove(os.path.join(directory, filename))
                 break
         if remove_tests:
-            cleaner = heuristic.Source.find (os.path.join (directory, 'wipe'))
+            cleaner = heuristic.source_find (os.path.join (directory, 'wipe'))
             if cleaner is None:
                 continue
             if not cleaner.run ():
@@ -469,10 +469,17 @@ def prepare_windows():
 
 class T:
     def __init__ ( self, log, configuration, legacy ):
-        self.__log = self.log = log
+        self.__log = log
         self.__configuration = configuration
         self.__problems = None
         self.__legacy = legacy
+        self.__languages = {}
+
+    log = property (lambda self: self.__log)
+    languages = property (lambda self: self.__languages)
+
+    def set_languages ( self, languages ):
+        self.__languages = languages
 
     def __foreach ( self, action ):
         if self.__problems is None:
@@ -488,7 +495,7 @@ class T:
     def __check ( self, problem, arguments ):
         solution = None
         if len(arguments) >= 1:
-            solution = heuristic.Source.find (arguments[0], prefix=problem.name_short)
+            solution = heuristic.source_find (arguments[0], prefix=problem.name_short)
             if solution is None:
                 raise Error ("solution not found: '%s'" % arguments[0])
         check_problem (problem, solution=solution, t=self)
@@ -501,7 +508,7 @@ class T:
             generator, solution = arguments[:2]
         except ValueError as error:
             raise Error ("usage: t.py stress <generator> <solution>") from error
-        generator, solution = [heuristic.Source.find (x) for x in (generator, solution)]
+        generator, solution = [heuristic.source_find (x) for x in (generator, solution)]
         r = True
         while r:
             r = check_problem (problem, solution=solution, tests=[
@@ -604,7 +611,8 @@ prepare()
 
 configuration = legacy.Configuration()
 tpy = T (log, options, configuration)
-heuristic.compilers_configure ( configuration, tpy )
+languages = heuristic.compilers_configure ( configuration, tpy )
+tpy.set_languages (languages)
 
 try:
     if options['verbose']:

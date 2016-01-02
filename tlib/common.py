@@ -33,9 +33,8 @@ class Module:
     def __init__ ( self, t ):
         self._t = t
 
-    @property
-    def _log ( self):
-        return self._t.log
+    _log = property (lambda self: self._t.log)
+    _languages = property (lambda self: self._t.languages)
 
 
 class Log:

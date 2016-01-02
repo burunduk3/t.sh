@@ -21,6 +21,7 @@ import os.path
 
 from tlib.common import Error
 from tlib.datalog import Datalog
+from tlib import types
 import compilers
 import problem
 
@@ -65,52 +66,21 @@ def set_compilers ( value ):
     languages = value
 
 
-class Source:
-    def __init__ ( self, path, compiler=None ):
-        self.__path = path
-        self.__compiler = compiler
-        assert compiler is not None
-        self.__executable = None
-
-    def __str__ ( self ):
-        return self.__path
-
-    def __eq__ ( self, other ):
-        return type (other) is Source and \
-            self.__path == other.__path and \
-            self.__compiler == other.__compiler
-
-    def compile ( self ):
-        global languages
-        compiler = languages[self.__compiler]
-        self.__executable = compiler (self.__path)
-        if self.__executable is None:
-            raise Error ("%s: compilation error" % self.__path)
-
-    def run ( self, *arguments, **kwargs ):
-        if self.__executable is None:
-            self.compile ()
-        return self.__executable (*arguments, **kwargs)
-
-    path = property (lambda self: self.__path)
-    compiler = property (lambda self: self.__compiler)
-    executable = property (lambda self: self.__executable)
-
-    @classmethod
-    def find ( cls, path, *, prefix=None, directory=None ):
-        for filename in [path + '.' + suffix for suffix in suffixes.keys ()] + [path]:
-            if directory is not None:
-                real = os.path.join (directory, filename)
-            else:
-                real = filename
-            if not os.path.isfile (real):
-                continue
-            compiler = compiler_detect (real)
-            if compiler is not None:
-                return cls (real, compiler)
-        if prefix is not None:
-            return Source.find (prefix + '_' + path, directory=directory)
-        return None
+def source_find ( path, *, prefix=None, directory=None ):
+    global languages
+    for filename in [path + '.' + suffix for suffix in suffixes.keys ()] + [path]:
+        if directory is not None:
+            real = os.path.join (directory, filename)
+        else:
+            real = filename
+        if not os.path.isfile (real):
+            continue
+        compiler = compiler_detect (real)
+        if compiler is not None:
+            return types.Source (real, compiler, languages)
+    if prefix is not None:
+        return source_find (prefix + '_' + path, directory=directory)
+    return None
 
 
 def find_problems ( base='.', *, t ):
@@ -161,10 +131,10 @@ def problem_properties_parse ( path ):
 
 
 def solution_find ( token, problem ):
-    result = Source.find (token)
+    result = source_find (token)
     if result is not None:
         return result
-    result = Source.find (problem.name_short + '_' + token)
+    result = source_find (problem.name_short + '_' + token)
     if result is not None:
         return result
     return None
@@ -233,7 +203,7 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
         'time limit': lambda: 5.0,
         'idle limit': lambda: 10.0,
         'memory limit': lambda: 768 * 2**20,  # 768 MiB
-        # TODO: mode autodetect here, fix output
+        # TODO: more autodetect here, fix output
         # 'generator', lambda: self.__autodetect_generator ()),
         # 'validator', lambda: self.validator, lambda: self.__autodetect_validator ()),
         # 'checker', lambda: self.checker, lambda: self.__autodetect_checker ())
@@ -272,7 +242,6 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
 
 # === COMPILERS CONFIGURATION ==
 # Здесь начинается конфигурация компиляторов. Мерзкая штука, не правда ли?
-# TODO: move to heuristics
 
 def compilers_configure ( configuration, t ):
 
@@ -389,7 +358,7 @@ def compilers_configure ( configuration, t ):
     set_compilers (result)
 
     if configuration is None:
-        return
+        return result
 
     configuration.compilers = result
 
@@ -411,5 +380,6 @@ def compilers_configure ( configuration, t ):
         'pas': 'pascal', 'dpr': 'delphi',
         'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
     }
+    return result
 
 

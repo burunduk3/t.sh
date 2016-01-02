@@ -20,6 +20,8 @@
 import itertools
 import time
 
+from . import common
+
 
 class Type:
     def __init__ ( self, t ):
@@ -35,12 +37,12 @@ class Type:
         assert False
 
 
-class Datalog:
+class Datalog (common.Module):
     class NotFound (Exception):
         pass
 
     def __init__ ( self, datalog, actions={}, *, create=False, t ):
-        self._t = t
+        super (Datalog, self).__init__ (t)
         self._actions = actions
         self._time = 0
         try:

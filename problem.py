@@ -224,16 +224,11 @@ class Problem (Datalog):
         return True
 
     def __lev_checker ( self, data ):
-        path = next (data)
-        compiler = next (data)
-        self.__checker = heuristic.Source (path, compiler)  # WTF
+        self.__checker = types.Source.parse (data, self._languages)
         return True
 
     def __lev_solution ( self, data ):
-        path = next (data)
-        compiler = next (data)
-        # TODO: move Source outside of heuristic
-        self.__solution = heuristic.Source (path, compiler)
+        self.__solution = types.Source.parse (data, self._languages)
         return True
 
     def __lev_generator_auto ( self, data ):
@@ -241,18 +236,13 @@ class Problem (Datalog):
         return True
 
     def __lev_generator_external ( self, data ):
-        path = next (data)
-        compiler = next (data)
+        generator = types.Source.parse (data, self._languages)
         directory = next (data)
-        self.__generator = Problem.Generator.external (
-            self, heuristic.Source (path, compiler), directory, t=self._t
-        )
+        self.__generator = Problem.Generator.external (self, generator, directory, t=self._t)
         return True
 
     def __lev_validator ( self, data ):
-        path = next (data)
-        compiler = next (data)
-        self.__validator = heuristic.Source (path, compiler)
+        self.__validator = types.Source.parse (data, self._languages)
         return True
 
     def canonical ( self, routine ):
@@ -342,11 +332,15 @@ class Problem (Datalog):
     output = property (lambda self: self.__output, __set_output)
 
     def __set_checker ( self, value ):
-        return self._commit (Problem.LEV_CHECKER, types.String (value.path), types.String (value.compiler))
+        return self._commit (
+            Problem.LEV_CHECKER, types.String (value.path), types.String (value.compiler)
+        )
     checker = property (lambda self: self.__checker, __set_checker)
 
     def __set_solution ( self, value ):
-        return self._commit (Problem.LEV_SOLUTION, types.String (value.path), types.String (value.compiler))
+        return self._commit (
+            Problem.LEV_SOLUTION, types.String (value.path), types.String (value.compiler)
+        )
     solution = property (lambda self: self.__solution, __set_solution)
 
     def __set_generator_auto ( self ):
@@ -360,7 +354,9 @@ class Problem (Datalog):
     generator = property (lambda self: self.__generator)
 
     def __set_validator ( self, value ):
-        return self._commit (Problem.LEV_VALIDATOR, types.String (value.path), types.String (value.compiler))
+        return self._commit (
+            Problem.LEV_VALIDATOR, types.String (value.path), types.String (value.compiler)
+        )
     validator = property (lambda self: self.__validator, __set_validator)
 
     name = property (
@@ -375,7 +371,7 @@ class Problem (Datalog):
         #        doall = find_source(problem_configuration['generator'])
         default = lambda: self.__set_generator_auto ()
         for name in ['tests', 'Tests']:
-            generator = heuristic.Source.find (name)
+            generator = heuristic.source_find (name)
             if generator is None:
                 continue
             return self.__set_generator_external (generator, '.')
@@ -392,7 +388,7 @@ class Problem (Datalog):
             'gen_tests'
         ]:
             # self._t.log.debug ('source: "%s"' % os.path.join (directory, name))
-            generator = heuristic.Source.find (name, directory=directory)
+            generator = heuristic.source_find (name, directory=directory)
             if generator is None:
                 continue
             return self.__set_generator_external (generator, directory)
@@ -407,7 +403,7 @@ class Problem (Datalog):
         if not os.path.isdir (directory):
             return None
         for name in ['validate', 'validator']:
-            validator = heuristic.Source.find (os.path.join (directory, name))
+            validator = heuristic.source_find (os.path.join (directory, name))
             if validator is None:
                 continue
             return self.__set_validator (validator)
@@ -419,7 +415,7 @@ class Problem (Datalog):
             'check', 'checker', 'check_' + self.__name_short.value,
             'checker_' + self.__name_short.value, 'Check'
         ]:
-            checker = heuristic.Source.find (name)
+            checker = heuristic.source_find (name)
             if checker is not None:
                 break
         if checker is None:
@@ -457,9 +453,9 @@ class Problem (Datalog):
                 count_hand += 1
                 break
             else:
-                generator = heuristic.Source.find ('do' + test)
+                generator = heuristic.source_find ('do' + test)
                 if generator is None:
-                    generator = heuristic.Source.find ('gen' + test)
+                    generator = heuristic.source_find ('gen' + test)
                 if generator is None:
                     continue
                 result = generator.run (stdout=open (target, 'w'))

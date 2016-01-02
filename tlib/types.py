@@ -2,6 +2,7 @@ import base64
 import re
 import struct
 
+from . import common
 from .datalog import Type
 
 class String (Type):
@@ -77,4 +78,44 @@ class Integer (Type):
     def parse ( cls, data ):
         return cls (next (data))
 
+
+class Source (Type):
+    def __init__ ( self, path, language, languages={} ):
+        self.__path = path
+        self.__language = language
+        self.__languages = languages
+        self.__executable = None
+
+    path = property (lambda self: self.__path)
+    language = property (lambda self: self.__languages)
+    executable = property (lambda self: self.__executable)
+
+    def __str__ ( self ):
+        return self.__path
+
+    def dump ( self ):
+        yield self.__path
+        yield self.__compiler
+
+    def __eq__ ( self, other ):
+        return type (other) is Source and \
+            self.__path == other.__path and \
+            self.__language == other.__language
+
+    def compile ( self ):
+        compiler = self.__languages[self.__language]
+        self.__executable = compiler (self.__path)
+        if self.__executable is None:
+            raise common.Error ("%s: compilation error" % self.__path)
+
+    def run ( self, *arguments, **kwargs ):
+        if self.__executable is None:
+            self.compile ()
+        return self.__executable (*arguments, **kwargs)
+
+    @classmethod
+    def parse ( cls, data, languages={} ):
+        path = next (data)
+        language = next (data)
+        return cls (path, language, languages)
 
