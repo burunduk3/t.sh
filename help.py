@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2015 Oleg Davydov
+#    Copyright (C) 2009-2016 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 #
 
 disclaimer = \
-    "    t.py version 0.1, Copyright (C) 2015 Oleg Davydov\n" + \
+    "    t.py version 0.1, Copyright (C) 2016 Oleg Davydov\n" + \
     "    t.py comes with ABSOLUTELY NO WARRANTY; for details type `t.py help gpl:w'.\n" + \
     "    This is free software, and you are welcome to redistribute it\n" + \
     "    under certain conditions; type `t.py help gpl:c' for details.\n"

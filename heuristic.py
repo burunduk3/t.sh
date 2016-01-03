@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2015 Oleg Davydov
+#    Copyright (C) 2009-2016 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -181,6 +181,21 @@ def problem_force_auto ( path, *, t ):
             return {}
     return None
 
+
+# TODO: for files copy
+# def convert_tests( tests ):
+#   log('convert tests', end='')
+#   for test in tests:
+#     log.write('.')
+#     p = subprocess.Popen(['dos2unix', test], stderr=open('/dev/null', 'w'))
+#     p.communicate()
+#     if p.returncode != 0: log.warning('dos2unix failed on test %s' % test)
+#     if not os.path.isfile(test + '.a'):
+#       continue
+#     p = subprocess.Popen(['dos2unix', test + '.a'], stderr=open('/dev/null', 'w'))
+#     p.communicate()
+#     if p.returncode != 0: log.warning('dos2unix failed on file %s.a' % test)
+#   log.write('done\n')
 
 class AutoGenerator (Type):
     LEV = 'problem.generator.auto'
