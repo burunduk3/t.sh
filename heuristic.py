@@ -236,7 +236,74 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
             p.name, key, getter ()
         ))
 
+    def autodetect_generator ( set_auto, set_external ):
+        # TODO:
+        #    if 'generator' in problem_configuration:
+        #        doall = find_source(problem_configuration['generator'])
+        default = lambda: set_auto ()
+        for name in ['tests', 'Tests']:
+            generator = source_find (name)
+            if generator is None:
+                continue
+            return set_external (generator, '.')
+        directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
+        if not os.path.isdir (directory):
+            directory = 'tests'
+        if not os.path.isdir (directory):
+            return default ()
+        for name in [
+            'do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen',
+            'gen_tests'
+        ]:
+            generator = source_find (name, directory=directory)
+            if generator is None:
+                continue
+            return set_external (generator, directory)
+        return default ()
+
+    def autodetect_validator ():
+        directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
+        if not os.path.isdir (directory):
+            directory = 'tests'
+        if not os.path.isdir (directory):
+            return None
+        for name in ['validate', 'validator']:
+            validator = source_find (os.path.join (directory, name))
+            if validator is None:
+                continue
+            return validator
+        return None
+
+    def autodetect_checker ():
+        nonlocal p
+        checker = None
+        for name in [
+            'check', 'checker', 'check_' + p.name_short,
+            'checker_' + p.name_short, 'Check'
+        ]:
+            checker = source_find (name)
+            if checker is not None:
+                break
+        if checker is None:
+            return None
+        return checker
+        # TODO move into language select, as checker.java
+        # if checker.name == 'Check.java':
+        #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. " +
+        #     "ru.ifmo.testlib.CheckerFramework Check"
+
     p.canonical (routine)
+    if p.generator is None:
+        p.detect_generator (autodetect_generator)
+    if p.validator is None:
+        p.validator = autodetect_validator ()
+    if p.checker is None:
+        p.checker = autodetect_checker ()
+
     return p
 
 

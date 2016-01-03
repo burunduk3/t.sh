@@ -254,15 +254,6 @@ class Problem (Datalog):
             ('idle limit', lambda: self.limit_idle, self.__set_limit_idle, None),
             ('memory limit', lambda: self.limit_memory, self.__set_limit_memory, None),
             ('solution', lambda: self.solution, self.__set_solution, None),
-            (
-                'generator', lambda: self.generator,
-                self.__set_generator_external, self.__autodetect_generator
-            ),
-            (
-                'validator', lambda: self.validator,
-                self.__set_validator, self.__autodetect_validator
-            ),
-            ('checker', lambda: self.checker, self.__set_checker, self.__autodetect_checker)
         ]
         for args in fields:
             routine (*args)
@@ -332,31 +323,22 @@ class Problem (Datalog):
     output = property (lambda self: self.__output, __set_output)
 
     def __set_checker ( self, value ):
-        return self._commit (
-            Problem.LEV_CHECKER, types.String (value.path), types.String (value.compiler)
-        )
+        return self._commit (Problem.LEV_CHECKER, value)
     checker = property (lambda self: self.__checker, __set_checker)
 
     def __set_solution ( self, value ):
-        return self._commit (
-            Problem.LEV_SOLUTION, types.String (value.path), types.String (value.compiler)
-        )
+        return self._commit (Problem.LEV_SOLUTION, value)
     solution = property (lambda self: self.__solution, __set_solution)
 
     def __set_generator_auto ( self ):
         return self._commit (Problem.LEV_GENERATOR_AUTO)
 
     def __set_generator_external ( self, value, directory ):
-        return self._commit (
-            Problem.LEV_GENERATOR_EXT, types.String (value.path), types.String (value.compiler),
-            types.String (directory)
-        )
+        return self._commit (Problem.LEV_GENERATOR_EXT, value, types.String (directory))
     generator = property (lambda self: self.__generator)
 
     def __set_validator ( self, value ):
-        return self._commit (
-            Problem.LEV_VALIDATOR, types.String (value.path), types.String (value.compiler)
-        )
+        return self._commit (Problem.LEV_VALIDATOR, value)
     validator = property (lambda self: self.__validator, __set_validator)
 
     name = property (
@@ -364,67 +346,8 @@ class Problem (Datalog):
     )
     tests = property (lambda self: self.__tests)
 
-    # TODO: move autogenerators into heurisctic
-    def __autodetect_generator ( self ):
-        # TODO:
-        #    if 'generator' in problem_configuration:
-        #        doall = find_source(problem_configuration['generator'])
-        default = lambda: self.__set_generator_auto ()
-        for name in ['tests', 'Tests']:
-            generator = heuristic.source_find (name)
-            if generator is None:
-                continue
-            return self.__set_generator_external (generator, '.')
-        directory = 'source'
-        if not os.path.isdir (directory):
-            directory = 'src'
-        if not os.path.isdir (directory):
-            directory = 'tests'
-        # self._t.log.debug ('directory: "%s"' % directory)
-        if not os.path.isdir (directory):
-            return default ()
-        for name in [
-            'do_tests', 'doall', 'TestGen', 'TestsGen', 'genTest', 'genTests', 'Tests', 'Gen',
-            'gen_tests'
-        ]:
-            # self._t.log.debug ('source: "%s"' % os.path.join (directory, name))
-            generator = heuristic.source_find (name, directory=directory)
-            if generator is None:
-                continue
-            return self.__set_generator_external (generator, directory)
-        return default ()
-
-    def __autodetect_validator ( self ):
-        directory = 'source'
-        if not os.path.isdir (directory):
-            directory = 'src'
-        if not os.path.isdir (directory):
-            directory = 'tests'
-        if not os.path.isdir (directory):
-            return None
-        for name in ['validate', 'validator']:
-            validator = heuristic.source_find (os.path.join (directory, name))
-            if validator is None:
-                continue
-            return self.__set_validator (validator)
-        return None
-
-    def __autodetect_checker ( self ):
-        checker = None
-        for name in [
-            'check', 'checker', 'check_' + self.__name_short.value,
-            'checker_' + self.__name_short.value, 'Check'
-        ]:
-            checker = heuristic.source_find (name)
-            if checker is not None:
-                break
-        if checker is None:
-            return None
-        return self.__set_checker (checker)
-        # TODO move into language select, as checker.java
-        # if checker.name == 'Check.java':
-        #     checker = "java -cp /home/burunduk3/user/include/testlib4j.jar:. " +
-        #     "ru.ifmo.testlib.CheckerFramework Check"
+    def detect_generator ( self, detector ):
+        return detector (self.__set_generator_auto, self.__set_generator_external)
 
     def cleanup ( self ):
         if not os.path.isdir ('.tests'):
@@ -434,6 +357,7 @@ class Problem (Datalog):
                 continue
             os.remove (os.path.join ('.tests', filename))
 
+    # TODO: move autogenerator into heurisctic
     def autogenerate ( self ):
         directory = 'source'
         if not os.path.isdir (directory):

@@ -27,10 +27,6 @@ class String (Type):
     def __eq__ ( self, x ):
         return self.__value == x.__value
 
-    # @classmethod
-    # def dump ( cls, value ):
-    #     return cls (value).dump ()
-
     @classmethod
     def parse ( cls, data ):
         return cls (next (data))
@@ -94,8 +90,8 @@ class Source (Type):
         return self.__path
 
     def dump ( self ):
-        yield self.__path
-        yield self.__compiler
+        yield from String.dumps (self.__path)
+        yield from String.dumps (self.__language)
 
     def __eq__ ( self, other ):
         return type (other) is Source and \

@@ -36,6 +36,10 @@ class Type:
     def __eq__ ( self, x ):
         assert False
 
+    @classmethod
+    def dumps ( cls, value ):
+        yield from cls (value).dump ()
+
 
 class Datalog (common.Module):
     class NotFound (Exception):
