@@ -59,6 +59,10 @@ class Datalog (common.Module):
             self._t.log.warning ("file not found: '%s', create new" % datalog)
         self.__datalog = open (datalog, 'a')
 
+    def _upgrade ( self, key, action ):
+        assert key not in self._actions
+        self._actions[key] = action
+
     def __precheck ( self, line ):
         ts, event, data = line.split (' ', 2)
         if self._time > int (ts):

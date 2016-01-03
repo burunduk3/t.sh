@@ -28,7 +28,6 @@ import struct
 from tlib.common import Error
 from tlib.datalog import Datalog, Type
 from tlib import types
-import heuristic
 
 
 class Problem (Datalog):
@@ -45,6 +44,8 @@ class Problem (Datalog):
             return Problem.File.std (t=t)
         return Problem.File.name (value, t=t)
 
+    TYPE_GENERATOR = range (1)
+
     LEV_CREATE = 'problem.create'
     LEV_NAME_SHORT = 'problem.name_short'
     LEV_LIMIT_TIME = 'problem.limit_time'
@@ -56,7 +57,6 @@ class Problem (Datalog):
     LEV_OUTPUT_STD = 'problem.output.std'
     LEV_CHECKER = 'problem.checker'
     LEV_SOLUTION = 'problem.solution'
-    LEV_GENERATOR_AUTO = 'problem.generator.auto'
     LEV_GENERATOR_EXT = 'problem.generator.external'
     LEV_VALIDATOR = 'problem.validator'
 
@@ -109,48 +109,28 @@ class Problem (Datalog):
 #   log.write('done\n')
 
     class Generator (Type):
-        class Auto (Type):
-            def __init__ ( self, problem, *, t):
-                super (Problem.Generator.Auto, self).__init__ (t=t)
-                self.__problem = problem
+        def __init__ ( self, problem, source, directory, *, t ):
+            super (Problem.Generator, self).__init__ (t=t)
+            self.__problem = problem
+            self.__source = source
+            self.__directory = directory
 
-            def __str__ ( self ):
-                return '<automatic>'
+        def commit ( self ):
+            return (Problem.LEV_GENERATOR_EXT, self.__source, types.String (self.__directory))
 
-            def __eq__ ( self, x ):
-                return type (self) is type (x)
+        def __str__ ( self ):
+            return str (self.__source)
 
-            def run ( self ):
-                return self.__problem.autogenerate ()
+        def __eq__ ( self, x ):
+            if type (self) is not type (x):
+                return False
+            return self.__source == x.__source
 
-        class External (Type):
-            def __init__ ( self, problem, source, directory, *, t ):
-                super (Problem.Generator.External, self).__init__ (t=t)
-                self.__problem = problem
-                self.__source = source
-                self.__directory = directory
-
-            def __str__ ( self ):
-                return str (self.__source)
-
-            def __eq__ ( self, x ):
-                if type (self) is not type (x):
-                    return False
-                return self.__source == x.__source
-
-            def run ( self ):
-                r = self.__source.run (directory=self.__directory)
-                if not r:
-                    raise Error ('generator failed: %s' % self)
-                return self.__problem.autofind_tests ('tests')
-
-        @classmethod
-        def auto ( cls, problem, *, t ):
-            return Problem.Generator.Auto (problem, t=t)
-
-        @classmethod
-        def external ( cls, problem, source, directory, *, t ):
-            return Problem.Generator.External (problem, source, directory, t=t)
+        def run ( self ):
+            r = self.__source.run (directory=self.__directory)
+            if not r:
+                raise Error ('generator failed: %s' % self)
+            return self.__problem.autofind_tests ('tests')
 
     def __init__ ( self, datalog, *, create=False, t ):
         self.__path = os.path.dirname (os.path.abspath (datalog))
@@ -185,10 +165,20 @@ class Problem (Datalog):
             Problem.LEV_OUTPUT_STD: self.__lev_output_std,
             Problem.LEV_CHECKER: self.__lev_checker,
             Problem.LEV_SOLUTION: self.__lev_solution,
-            Problem.LEV_GENERATOR_AUTO: self.__lev_generator_auto,
+            # Problem.LEV_GENERATOR_AUTO: self.__lev_generator_auto,
             Problem.LEV_GENERATOR_EXT: self.__lev_generator_external,
             Problem.LEV_VALIDATOR: self.__lev_validator
         }
+        for type, key, action in self._t.problem_upgrades:
+            action = action (self)
+
+            def assign_generator ( value ):
+                nonlocal self
+                self.__generator = value
+
+            self._upgrade (key, lambda data, self=self: {
+                Problem.TYPE_GENERATOR: assign_generator
+            } [type] (action (data)))
         return self.__uuid
 
     def __lev_name_short ( self, data ):
@@ -231,14 +221,10 @@ class Problem (Datalog):
         self.__solution = types.Source.parse (data, self._languages)
         return True
 
-    def __lev_generator_auto ( self, data ):
-        self.__generator = Problem.Generator.auto (self, t=self._t)
-        return True
-
     def __lev_generator_external ( self, data ):
         generator = types.Source.parse (data, self._languages)
         directory = next (data)
-        self.__generator = Problem.Generator.external (self, generator, directory, t=self._t)
+        self.__generator = Problem.Generator (self, generator, directory, t=self._t)
         return True
 
     def __lev_validator ( self, data ):
@@ -330,12 +316,10 @@ class Problem (Datalog):
         return self._commit (Problem.LEV_SOLUTION, value)
     solution = property (lambda self: self.__solution, __set_solution)
 
-    def __set_generator_auto ( self ):
-        return self._commit (Problem.LEV_GENERATOR_AUTO)
-
-    def __set_generator_external ( self, value, directory ):
-        return self._commit (Problem.LEV_GENERATOR_EXT, value, types.String (directory))
-    generator = property (lambda self: self.__generator)
+    def __set_generator ( self, value ):
+        lev, *args = value.commit ()
+        return self._commit (lev, *args)
+    generator = property (lambda self: self.__generator, __set_generator)
 
     def __set_validator ( self, value ):
         return self._commit (Problem.LEV_VALIDATOR, value)
@@ -346,9 +330,6 @@ class Problem (Datalog):
     )
     tests = property (lambda self: self.__tests)
 
-    def detect_generator ( self, detector ):
-        return detector (self.__set_generator_auto, self.__set_generator_external)
-
     def cleanup ( self ):
         if not os.path.isdir ('.tests'):
             os.mkdir ('.tests')
@@ -356,43 +337,6 @@ class Problem (Datalog):
             if not re.match('^\d+(\.a)?$', filename):
                 continue
             os.remove (os.path.join ('.tests', filename))
-
-    # TODO: move autogenerator into heurisctic
-    def autogenerate ( self ):
-        directory = 'source'
-        if not os.path.isdir (directory):
-            directory = 'src'
-        if not os.path.isdir (directory):
-            directory = 'tests'
-        if not os.path.isdir (directory):
-            raise Exception ('[problem %s]: failed to find source directory' % self.name)
-        count_hand, count_gen, failure = 0, 0, False
-        # TODO: this is slow on some outdated systems
-        for test in ['%02d' % i for i in range (100)]:
-            target = os.path.join ('.tests', '%d' % (count_hand + count_gen))
-            for f in [os.path.join (directory, test + suffix) for suffix in ['.hand', '.manual']]:
-                if not os.path.isfile (f):
-                    continue
-                shutil.copy (f, target)
-                count_hand += 1
-                break
-            else:
-                generator = heuristic.source_find ('do' + test)
-                if generator is None:
-                    generator = heuristic.source_find ('gen' + test)
-                if generator is None:
-                    continue
-                result = generator.run (stdout=open (target, 'w'))
-                if not result:
-                    raise self._t.Error ('generator (%s) failed' % generator)
-                    failure = True
-                else:
-                    count_gen += 1
-        if count_hand != 0:
-            self._t.log ('manual tests copied: %d' % count_hand)
-        if count_gen != 0:
-            self._t.log ('generated tests: %d' % count_gen)
-        return not failure
 
     def autofind_tests ( self, directory ):
         count = 0

@@ -20,7 +20,7 @@
 import os.path
 
 from tlib.common import Error
-from tlib.datalog import Datalog
+from tlib.datalog import Datalog, Type
 from tlib import types
 import compilers
 import problem
@@ -182,6 +182,71 @@ def problem_force_auto ( path, *, t ):
     return None
 
 
+class AutoGenerator (Type):
+    LEV = 'problem.generator.auto'
+
+    def __init__ ( self, problem, *, t ):
+        super (AutoGenerator, self).__init__ (t=t)
+        self.__problem = problem
+
+    def __str__ ( self ):
+        return '<generator:automatic>'
+
+    def __eq__ ( self, x ):
+        return type (self) is type (x)
+
+    def commit ( self ):
+        return (AutoGenerator.LEV,)
+
+    def run ( self ):
+        directory = 'source'
+        if not os.path.isdir (directory):
+            directory = 'src'
+        if not os.path.isdir (directory):
+            directory = 'tests'
+        if not os.path.isdir (directory):
+            raise Error ('[problem %s]: failed to find source directory' % self.__problem.name)
+        count_hand, count_gen, failure = 0, 0, False
+        # TODO: this is slow on some outdated systems
+        for test in ['%02d' % i for i in range (100)]:
+            target = os.path.join ('.tests', '%d' % (count_hand + count_gen))
+            for f in [os.path.join (directory, test + suffix) for suffix in ['.hand', '.manual']]:
+                if not os.path.isfile (f):
+                    continue
+                shutil.copy (f, target)
+                count_hand += 1
+                break
+            else:
+                generator = heuristic.source_find ('do' + test)
+                if generator is None:
+                    generator = heuristic.source_find ('gen' + test)
+                if generator is None:
+                    continue
+                result = generator.run (stdout=open (target, 'w'))
+                if not result:
+                    raise Error ('generator (%s) failed' % generator)
+                    failure = True
+                else:
+                    count_gen += 1
+        if count_hand != 0:
+            self._log ('manual tests copied: %d' % count_hand)
+        if count_gen != 0:
+            self._.log ('generated tests: %d' % count_gen)
+        return not failure
+
+    @classmethod
+    def set ( cls, problem, *, t ):
+        return cls (problem, t=t)
+
+    @classmethod
+    def register ( cls, *, t ):
+        t.register_problem_upgrade (
+            problem.Problem.TYPE_GENERATOR,
+            AutoGenerator.LEV,
+            lambda problem, cls=cls, t=t: cls.set (problem, t=t)
+        )
+
+
 def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
     force = None
     if force is None:
@@ -236,16 +301,17 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
             p.name, key, getter ()
         ))
 
-    def autodetect_generator ( set_auto, set_external ):
+    def autodetect_generator ():
+        nonlocal p, t
         # TODO:
         #    if 'generator' in problem_configuration:
         #        doall = find_source(problem_configuration['generator'])
-        default = lambda: set_auto ()
+        default = lambda: AutoGenerator (p, t=t)
         for name in ['tests', 'Tests']:
             generator = source_find (name)
             if generator is None:
                 continue
-            return set_external (generator, '.')
+            return problem.Problem.Generator (p, generator, '.', t=t)
         directory = 'source'
         if not os.path.isdir (directory):
             directory = 'src'
@@ -260,7 +326,7 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
             generator = source_find (name, directory=directory)
             if generator is None:
                 continue
-            return set_external (generator, directory)
+            return problem.Problem.Generator (p, generator, directory, t=t)
         return default ()
 
     def autodetect_validator ():
@@ -298,7 +364,7 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
 
     p.canonical (routine)
     if p.generator is None:
-        p.detect_generator (autodetect_generator)
+        p.generator = autodetect_generator ()
     if p.validator is None:
         p.validator = autodetect_validator ()
     if p.checker is None:

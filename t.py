@@ -474,12 +474,18 @@ class T:
         self.__problems = None
         self.__legacy = legacy
         self.__languages = {}
+        self.__upgrades_problem = []
 
     log = property (lambda self: self.__log)
     languages = property (lambda self: self.__languages)
 
+    problem_upgrades = property (lambda self: self.__upgrades_problem)
+
     def set_languages ( self, languages ):
         self.__languages = languages
+
+    def register_problem_upgrade ( self, type, key, action ):
+        self.__upgrades_problem.append ((type, key, action))
 
     def __foreach ( self, action ):
         if self.__problems is None:
@@ -611,6 +617,7 @@ prepare()
 
 configuration = legacy.Configuration()
 tpy = T (log, options, configuration)
+heuristic.AutoGenerator.register (t=tpy)
 languages = heuristic.compilers_configure ( configuration, tpy )
 tpy.set_languages (languages)
 
