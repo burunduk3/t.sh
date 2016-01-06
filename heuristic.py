@@ -25,6 +25,7 @@ from tlib import types
 import compilers
 import problem
 
+import xml.etree.ElementTree as xml
 
 def detector_python( source ):
     with open (source, 'r') as f:
@@ -114,11 +115,16 @@ def find_problems ( base='.', *, t ):
 
 def problem_force_xml ( path, *, t ):
     try:
-        with open (os.path.join (path, 'problem.xml'), 'r'):
-            raise Exception ("TODO: parse problem.xml")
+        with open (os.path.join (path, 'problem.xml'), 'r') as f:
+            data = f.read ()
     except FileNotFoundError:
         return None  # no file, no problems
-    assert False
+    data = xml.XML (data)
+    if list (sorted (data.attrib.keys ())) == ['id', 'version'] and data.attrib['version'] == "1.0":
+        t.log.info ("ignore problem.xml: not problem data but config for PCMS2")
+        return None
+    print (data.tag, data.text, data.attrib)
+    raise Exception ("TODO: parse problem.xml")
 
 
 def problem_properties_parse ( path ):
@@ -381,7 +387,9 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
     if p.generator is None:
         p.generator = autodetect_generator ()
     if p.validator is None:
-        p.validator = autodetect_validator ()
+        validator = autodetect_validator ()
+        if validator is not None:
+            p.validator = validator
     if p.checker is None:
         p.checker = autodetect_checker ()
 
