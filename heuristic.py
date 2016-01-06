@@ -258,7 +258,7 @@ class AutoGenerator (Type):
         t.register_problem_upgrade (
             problem.Problem.TYPE_GENERATOR,
             AutoGenerator.LEV,
-            lambda problem, cls=cls, t=t: cls.set (problem, t=t)
+            lambda problem, data, cls=cls, t=t: cls.set (problem, t=t)
         )
 
 

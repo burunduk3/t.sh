@@ -156,15 +156,13 @@ class Problem (Datalog):
             Problem.LEV_VALIDATOR: self.__lev_validator
         }
         for type, key, action in self._t.problem_upgrades:
-            action = action (self)
-
             def assign_generator ( value ):
                 nonlocal self
                 self.__generator = value
 
             self._upgrade (key, lambda data, self=self: {
                 Problem.TYPE_GENERATOR: assign_generator
-            } [type] (action (data)))
+            } [type] (action (self, data)))
         return self.__uuid
 
     def __lev_reset ( self, data ):
