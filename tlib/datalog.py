@@ -52,7 +52,7 @@ class Datalog (common.Module):
         try:
             with open (datalog, 'r') as log:
                 for line in log.readlines ():
-                    self.__event (line)
+                    self.__event (line.strip ())
         except FileNotFoundError as error:
             if not create:
                 raise Datalog.NotFound from error
@@ -64,7 +64,7 @@ class Datalog (common.Module):
         self._actions[key] = action
 
     def __precheck ( self, line ):
-        ts, event, data = line.split (' ', 2)
+        ts, event, *data = line.split (' ', 2)
         if self._time > int (ts):
             return None
         if event not in self._actions:
@@ -112,7 +112,11 @@ class Datalog (common.Module):
 
 
     def __event ( self, line ):
-        ts, event, data = line.split (' ', 2)
+        ts, event, *data = line.split (' ', 2)
+        if len (data):
+            data = data[0]
+        else:
+            data = ''
         self._time = int (ts)
         return self._actions[event] ( self.__parse (data))
 
@@ -132,5 +136,5 @@ class Datalog (common.Module):
             return None
         print (line, file=self.__datalog)
         self.__datalog.flush ()
-        return self.__event (line)
+        return self.__event (line.strip ())
 

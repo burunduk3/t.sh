@@ -23,7 +23,6 @@ import os.path
 import random
 import re
 import shutil
-import struct
 
 from tlib.common import Error
 from tlib.datalog import Datalog, Type
@@ -47,6 +46,7 @@ class Problem (Datalog):
     TYPE_GENERATOR = range (1)
 
     LEV_CREATE = 'problem.create'
+    LEV_RESET = 'problem.reset'
     LEV_NAME_SHORT = 'problem.name_short'
     LEV_LIMIT_TIME = 'problem.limit_time'
     LEV_LIMIT_IDLE = 'problem.limit_idle'
@@ -140,6 +140,7 @@ class Problem (Datalog):
     def __lev_create ( self, data ):
         self.__uuid = next (data)
         self._actions = {
+            Problem.LEV_RESET: self.__lev_reset,
             Problem.LEV_NAME_SHORT: self.__lev_name_short,
             Problem.LEV_LIMIT_TIME: self.__lev_limit_time,
             Problem.LEV_LIMIT_IDLE: self.__lev_limit_idle,
@@ -165,6 +166,18 @@ class Problem (Datalog):
                 Problem.TYPE_GENERATOR: assign_generator
             } [type] (action (data)))
         return self.__uuid
+
+    def __lev_reset ( self, data ):
+        self.__name_short = None
+        self.__limit_time = None
+        self.__limit_idle = None
+        self.__limit_memory = None
+        self.__input = None
+        self.__output = None
+        self.__solution = None
+        self.__generator = None
+        self.__validator = None
+        self.__checker = None
 
     def __lev_name_short ( self, data ):
         self.__name_short = types.String.parse (data)
@@ -233,6 +246,9 @@ class Problem (Datalog):
         if uuid is None:
             uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
         return self._commit (Problem.LEV_CREATE, types.String (uuid))
+
+    def reset ( self ):
+        return self._commit (Problem.LEV_RESET)
 
     path = property (lambda self: self.__path)
     uuid = property (lambda self: self.__uuid)

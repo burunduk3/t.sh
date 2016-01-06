@@ -534,11 +534,10 @@ class T:
         self.__problems = [problem]
         self.__log ('create problem #%s' % uuid)
 
-    def __problem_reset ( self, problem ):
+    def __problem_reset ( self, problem, arguments ):
         problem.reset ()
-        heuristic.problem_rescan (problem, t=self)
 
-    def __problem_rescan ( self, problem ):
+    def __problem_rescan ( self, problem, arguments ):
         heuristic.problem_rescan (problem, t=self)
 
     def __problem_set ( self, problem, arguments ):
