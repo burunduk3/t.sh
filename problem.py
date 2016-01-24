@@ -30,15 +30,15 @@ from tlib import types
 
 
 class Problem (Datalog):
-    @classmethod
-    def parse_memory ( self, value ):
+    @staticmethod
+    def parse_memory ( value, *, t ):
         for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
             if value.endswith(suffix):
                 return int (value[0:-len (suffix)]) * multiplier
         assert False
 
-    @classmethod
-    def parse_file ( self, value, *, t ):
+    @staticmethod
+    def parse_file ( value, *, t ):
         if value in ('<std>', '<stdin>', '<stdout>'):
             return Problem.File.std (t=t)
         return Problem.File.name (value, t=t)
@@ -117,7 +117,7 @@ class Problem (Datalog):
                 raise Error ('generator failed: %s' % self)
             return self.__problem.autofind_tests ('tests')
 
-    def __init__ ( self, datalog, *, create=False, t ):
+    def __init__ ( self, datalog, **kwargs ):
         self.__path = os.path.dirname (os.path.abspath (datalog))
         self.__uuid = None
         self.__name_short = None
@@ -132,7 +132,7 @@ class Problem (Datalog):
         self.__checker = None
         super (Problem, self).__init__ (datalog, actions={
             Problem.LEV_CREATE: self.__lev_create
-        }, create=create, t=t)
+        }, **kwargs)
         self.__tests = None
 
     # handle logevents

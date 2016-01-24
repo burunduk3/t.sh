@@ -374,6 +374,8 @@ def clean_problem ( problem ):
         if not os.path.isdir (directory):
             continue
         for filename in os.listdir (directory):
+            if os.path.isdir (filename):
+                continue
             ok = re.match (
                 '^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename
             )
@@ -381,6 +383,7 @@ def clean_problem ( problem ):
             ok = ok or filename in ("input", "output")
             if ok:
                 os.remove (os.path.join (directory, filename))
+                continue
             for suffix in heuristic.suffixes_all ():
                 if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
                     continue
@@ -487,9 +490,10 @@ class T:
     def register_problem_upgrade ( self, type, key, action ):
         self.__upgrades_problem.append ((type, key, action))
 
-    def __foreach ( self, action ):
+    def __foreach ( self, action, *extra ):
+        self.__log.debug ("T::__foreach (extra = [%s])" % ', '.join ([str (x) for x in extra]))
         if self.__problems is None:
-            self.__explore ()
+            self.__explore (*extra)
         for problem in self.__problems:
             action (problem)
 
@@ -554,11 +558,12 @@ class T:
         command = arguments[0]
         actions = {
             x: (
-                lambda command, args, y=y: self.__foreach (lambda problem: y (problem, args))
-            ) for x, y in [
+                lambda command, args, y=y, extra=extra:
+                self.__foreach (lambda problem: y (problem, args), *extra)
+            ) for x, y, *extra in [
                 ('build', self.__build),
                 ('check', self.__check),
-                ('clean', self.__clean),
+                ('clean', self.__clean, None, False),
                 ('stress', self.__stress),
                 ('tests', self.__tests),
                 ('problem:reset', self.__problem_reset),
@@ -577,13 +582,14 @@ class T:
             raise Error ("unknown command: '%s'" % command) from error
         action (command, arguments[1:])
 
-    def __explore ( self, recursive=None ):
+    def __explore ( self, recursive=None, datalog_write=True ):
         if recursive is None:
             recursive = self.__configuration['recursive']
+        self.__log.debug ("T::__explore (datalog_write=%s)" % str (datalog_write))
         if recursive:
-            self.__problems = list (heuristic.find_problems (t=self))
+            self.__problems = list (heuristic.find_problems (datalog_write=datalog_write, t=self))
         else:
-            self.__problems = [heuristic.problem_open (t=self)]
+            self.__problems = [heuristic.problem_open (datalog_write=datalog_write, t=self)]
         for problem in self.__problems:
             if problem.uuid is None:
                 problem.create ()

@@ -45,19 +45,28 @@ class Datalog (common.Module):
     class NotFound (Exception):
         pass
 
-    def __init__ ( self, datalog, actions={}, *, create=False, t ):
+    # use write=True to save data in memory, readonly=True for deny any change
+    def __init__ ( self, datalog, actions={}, *, create=False, write=True, readonly=False, t ):
         super (Datalog, self).__init__ (t)
         self._actions = actions
         self._time = 0
+        self.__readonly = readonly
+        if self.__readonly:
+            write = False
         try:
             with open (datalog, 'r') as log:
                 for line in log.readlines ():
                     self.__event (line.strip ())
         except FileNotFoundError as error:
-            if not create:
+            if create:
+                assert (write)
+                self._t.log.warning ("file not found: '%s', create new" % datalog)
+            elif write:
                 raise Datalog.NotFound from error
-            self._t.log.warning ("file not found: '%s', create new" % datalog)
-        self.__datalog = open (datalog, 'a')
+        if write:
+            self.__datalog = open (datalog, 'a')
+        else:
+            self.__datalog = None
 
     def _upgrade ( self, key, action ):
         assert key not in self._actions
@@ -129,12 +138,14 @@ class Datalog (common.Module):
                yield y
 
     def _commit ( self, event, *args, check=True ):
+        assert not self.__readonly
         now = str (int (time.time ()))
         line = ' '.join (self.__logevent (now, event, *args))
         if self.__precheck (line) is None:
             assert not check
             return None
-        print (line, file=self.__datalog)
-        self.__datalog.flush ()
+        if self.__datalog is not None:
+            print (line, file=self.__datalog)
+            self.__datalog.flush ()
         return self.__event (line.strip ())
 

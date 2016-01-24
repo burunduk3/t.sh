@@ -7,41 +7,20 @@
   — директория tests (в ней содержатся тесты либо генераторы для тестов)
   — директория source или src (в ней содержатся генераторы для тестов и
 прочее)
-Приритеты:
+Приоритеты:
   — Если существует problem.xml, используется он, .datalog синхронизируется по
 нему
   …
 
-TODO:
-  команды reset и rescan
-  экспорт (хотя бы .tests -> tests/%0*d), желательно ещё конфиги ejudge для
-контеста
-  команды set <всякая ерунда> чтобы не использовать problem.properties без
-необходимости
-  модули (вроде распаковки test.7z какой-нибудь понятной структуры)
-  починить t.py -r build (на ~/lksh/2015/03-winter/lksh-2015-winter-as/day03.casino/problems/)
-  «лёгкий» режим (без создания .datalog), особенно полезно для clean
-какого-нибудь
+Пример задачи с tests.7z (и больше ничем): ru.lksh.2015.03-winter.AS.collection
+Пример задачи с problem.xml из полигона: ru.lksh.2015.02-august.A.exam.balls
 
-Какие-то старые куски, надо будет разобраться, нет ли чего полезного
-# === PARTS OF t.sh ===
+  Мысли про задачи в целом.
+Если добавлять к задаче глобальный идентификатор, то это может быть случайный
+набор байт (неинтересно), или хеш какого-то параметра задачи. В качестве этого
+параметра интересно может быть:
+  — первая версия условия
+  — stdesc.txt
 
-# # GCC flags
-# gccVersionString=`gcc --version | head -n 1`
-# gccVersion=${gccVersionString##* }
-# gccVersionMajor=${gccVersion##*.}
-# if [ $gccVersionMajor == "4" ] ; then
-#   CFLAGS="-O2 -Wall -Wextra -I $INCLUDE_PATH -D__T_SH__"
-# else
-#   CFLAGS="-O2 -Wall -I $INCLUDE_PATH -D__T_SH__"
-# fi
-# CXXFLAGS="${CFLAGS}"
-# # End of GCC flags
-# BINARY_SUFFIX=""
-# if [ "$OPERATION_SYSTEM" != "Linux" ]; then
-#   CFLAGS="$CFLAGS -Wl,--stack=134217728"
-#   CXXFLAGS="$CXXFLAGS -Wl,--stack=134217728"
-#   BINARY_SUFFIX=".exe"
-# fi
-
-
+Можно ещё посмотреть https://acm.math.spbu.ru/svn/specifications (искать в
+~/contests/work/archive)

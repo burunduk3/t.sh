@@ -27,6 +27,7 @@ import problem
 
 import xml.etree.ElementTree as xml
 
+
 def detector_python( source ):
     with open (source, 'r') as f:
         shebang = f.readline ()
@@ -84,7 +85,7 @@ def source_find ( path, *, prefix=None, directory=None ):
     return None
 
 
-def find_problems ( base='.', *, t ):
+def find_problems ( base='.', *, datalog_write=True, t ):
     queue = [os.path.abspath (base)]
     for path in queue:
         if not os.path.isdir(path):
@@ -95,7 +96,7 @@ def find_problems ( base='.', *, t ):
                 is_problem = True
                 break
         if is_problem:
-            yield problem_open (path, t=t)
+            yield problem_open (path, datalog_write=datalog_write, t=t)
         else:
             queue += [os.path.join (path, x) for x in sorted (os.listdir (path))]
 
@@ -127,10 +128,17 @@ def problem_force_xml ( path, *, t ):
     raise Exception ("TODO: parse problem.xml")
 
 
-def problem_properties_parse ( path ):
+def problem_properties_parse ( path, *, t ):
     with open (path, 'r') as f:
         for line in f.readlines ():
-            key, value = [token.strip() for token in line.split('=', 1)]
+            line = line.strip ()
+            if line == '':
+                continue
+            try:
+                key, value = [token.strip() for token in line.split('=', 1)]
+            except ValueError:
+                t.log ("problem.properties: bad line '%s'" % line)
+                continue
             if value[0] == '"' and value[-1] == '"':
                 value = value[1:-1]
             yield key, value
@@ -148,7 +156,7 @@ def solution_find ( token, problem ):
 
 def problem_force_properties ( path, *, t ):
     try:
-        properties = problem_properties_parse (os.path.join (path, 'problem.properties'))
+        properties = problem_properties_parse (os.path.join (path, 'problem.properties'), t=t)
         result = {}
         options = {
             'time-limit': ('time limit', lambda x: lambda y: float (x)),
@@ -171,7 +179,7 @@ def problem_force_properties ( path, *, t ):
             try:
                 key, morph = options[name]
             except KeyError:
-                self._t.log.warning ('[%s]: ignored option: %s' % (path, name))
+                t.log.warning ('[%s]: ignored option: %s' % (path, name))
                 continue
             assert key not in result
             result[key] = morph (value)
@@ -238,9 +246,9 @@ class AutoGenerator (Type):
                 count_hand += 1
                 break
             else:
-                generator = heuristic.source_find ('do' + test)
+                generator = source_find ('do' + test)
                 if generator is None:
-                    generator = heuristic.source_find ('gen' + test)
+                    generator = source_find ('gen' + test)
                 if generator is None:
                     continue
                 result = generator.run (stdout=open (target, 'w'))
@@ -268,7 +276,7 @@ class AutoGenerator (Type):
         )
 
 
-def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
+def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, datalog_write=True, t):
     force = None
     if force is None:
         force = problem_force_xml (path, t=t)
@@ -277,7 +285,12 @@ def problem_open ( path=os.path.abspath ('.'), datalog='.datalog', *, t):
     if force is None:
         force = problem_force_auto (path, t=t)
     try:
-        p = problem.Problem (os.path.join (path, datalog), create=(force is not None), t=t)
+        p = problem.Problem (
+            os.path.join (path, datalog),
+            create=(datalog_write and force is not None),
+            write=datalog_write,
+            t=t
+        )
     except Datalog.NotFound as error:
         raise Error ("not a problem: '%s'" % path) from error
     if p.uuid is None:
