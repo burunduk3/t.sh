@@ -18,46 +18,15 @@
 #
 
 import os
-import subprocess
+import itertools
 
 from tlib.common import Error, Module
-import heuristic
-
-
-class Executable:
-    def __init__ ( self, command, *, name=None ):
-        self.__command = command
-        if name is None:
-            name = ' '.join (command)
-        self.__name = name
-
-    def __str__ ( self ):
-        return self.__name
-
-    def start ( self, *arguments, directory=None, stdin=None, stdout=None, stderr=None ):
-        process = subprocess.Popen (
-            self.__command + list (arguments),
-            cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
-        )
-        return process
-
-    def __call__ ( self, *args, **kwargs ):
-        process = self.start (*args, **kwargs)
-        process.communicate ()
-        return process.returncode == 0
-
-    @classmethod
-    def local ( cls, path ):
-        directory, filename = os.path.split (path)
-        if directory == '':
-            directory = '.'
-        path = os.path.join (directory, filename)
-        return cls ([path], name=path)
+from invoker import Executable
 
 
 class Compiler (Executable):
-    def __init__ ( self, command, morph, *, name=None ):
-        super (Compiler, self).__init__ (command, name=name)
+    def __init__ ( self, command, morph, *, name=None, t ):
+        super (Compiler, self).__init__ (command, name=name, t=t)
         self.__morph = morph
 
     def compile ( self, source, target ):
@@ -65,11 +34,10 @@ class Compiler (Executable):
         return self (*arguments)
 
 
-compile_cache = {}
-
-
 class Language (Module):
-    def __init__( self, *, binary=None, compiler=None, executable=None, t ):
+    __cache = {}
+
+    def __init__ ( self, *, binary=None, compiler=None, executable=None, t ):
         super (Language, self).__init__ (t)
         self.__binary = binary
         self.__compiler = compiler
@@ -77,13 +45,12 @@ class Language (Module):
         if binary is None:
             self.__binary = lambda source: source
 
-    def __call__( self, source ):
-        global compile_cache
+    def __call__ ( self, source ):
         key = source
         if not key.startswith ('/'):
             key = os.path.join (os.getcwd (), key)
-        if key in compile_cache:
-            return compile_cache[key]
+        if key in Language.__cache:
+            return Language.__cache[key]
         binary = self.__binary (source)
         need_recompile = True
         if self.__compiler is None:
@@ -99,7 +66,7 @@ class Language (Module):
             self._log ('compile skipped: %s' % binary)
         if not binary.startswith ('/'):
             binary = os.path.join (os.getcwd (), binary)
-        compile_cache[key] = self.__executable (binary)
-        return compile_cache[key]
+        Language.__cache[key] = self.__executable (binary)
+        return Language.__cache[key]
 
 

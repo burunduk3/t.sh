@@ -417,11 +417,11 @@ def compilers_configure ( configuration, t ):
     # script = lambda interpeter: lambda binary: Executable (binary, [interpeter])
     def script ( interpeter ):
         def result ( binary ):
-            nonlocal interpeter
-            return compilers.Executable ([interpeter, binary])
+            nonlocal interpeter, t
+            return compilers.Executable ([interpeter, binary], t=t)
         return result
 
-    executable_default = lambda binary: compilers.Executable.local (binary)
+    executable_default = lambda binary: compilers.Executable.local (binary, t=t)
     binary_default = lambda source: os.path.splitext(source)[0]
 
     java_cp_suffix = os.environ.get('CLASSPATH', None)
@@ -450,7 +450,8 @@ def compilers_configure ( configuration, t ):
             compiler=C (
                 ['gcc'] + flags_c + ['-x', 'c'],
                 lambda source, target: ['-o', target, source],
-                name='c.gcc'
+                name='c.gcc',
+                t=t
             ),
             executable=executable_default,
             t=t
@@ -460,7 +461,8 @@ def compilers_configure ( configuration, t ):
             compiler=C (
                 ['g++'] + flags_cpp + ['-x', 'c++'],
                 lambda source, target: ['-o', target, source],
-                name='c++.gcc'
+                name='c++.gcc',
+                t=t
             ),
             executable=executable_default,
             t=t
@@ -473,7 +475,8 @@ def compilers_configure ( configuration, t ):
                     '-Fi' + include_path, '-d__T_SH__'
                 ],
                 lambda source, target: ['-o' + target, source],
-                name='delphi.fpc'
+                name='delphi.fpc',
+                t=t
             ),
             # command=lambda source, binary: [
             #     'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__',
@@ -487,7 +490,8 @@ def compilers_configure ( configuration, t ):
             compiler=C (
                 ['javac'],
                 lambda source, target: ['-cp', os.path.dirname (source), source],
-                name='java'
+                name='java',
+                t=t
             ),
             executable=lambda binary: E ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
@@ -501,7 +505,8 @@ def compilers_configure ( configuration, t ):
             compiler=C (
                 ['javac'],
                 lambda source, target: ['-cp', os.path.dirname (source), source],
-                name='checker.java'
+                name='checker.java',
+                t=t
             ),
             executable=lambda binary: E ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
@@ -518,7 +523,8 @@ def compilers_configure ( configuration, t ):
                     '-d__T_SH__'
                 ],
                 lambda source, target: ['-o' + target, source],
-                name='pascal.fpc'
+                name='pascal.fpc',
+                t=t
             ),
             executable=executable_default,
             t=t

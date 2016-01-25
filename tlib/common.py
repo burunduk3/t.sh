@@ -73,9 +73,6 @@ class Log:
         if level < self.__verbose:
             return
         if prefix:
-            # TODO: accurate verbose output?
-            # self.write ("\x1b[1;%dm[t:%s,verbose]\x1b[0m %s" %
-            # (self.__color[level], self.__message[level], message), end=end)
             message = "[t:%s] \x1b[1;%dm%s\x1b[0m%s" % \
                 (self.__message[level], self.__color[level], message, end)
         else:
@@ -86,8 +83,4 @@ class Log:
     def __write_default ( message ):
         sys.stdout.write (message)
         sys.stdout.flush ()
-
-    # TODO: support colored messages in action, support \r and shifts here
-    # if color is not None:
-    #    message = "\x1b[1;%dm%s\x1b[0m" % (self.__color[color], message)
 

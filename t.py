@@ -33,7 +33,7 @@ from problem import Problem
 import heuristic
 import help
 import legacy
-from invoker import Invoker, RunResult
+from invoker import Runner, RunResult
 
 # === CHANGE LOG ===
 #  2010-11-17 [burunduk3] work started
@@ -221,27 +221,28 @@ def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
         input_name = os.path.join ('.temp', str (problem.input))
     if type (problem.output) is Problem.File.Name:
         output_name = os.path.join ('.temp', str (problem.output))
-    invoker = Invoker (
-        solution.executable, limit_time=problem.limit_time,
-        limit_idle=problem.limit_idle, limit_memory=problem.limit_memory,
-        t=t
+    invoker = Runner (
+        limit_time=problem.limit_time, limit_idle=problem.limit_idle,
+        limit_memory=problem.limit_memory, t=t
     )
     for i, x in enumerate (tests):
         test = x.create ()
         test_name = '#%02d' % (i + 1)
         log ('test %s [%s] ' % (test_name, x), end='')
         shutil.copy (test, input_name)
-        r = invoker.run (
+        r = solution.executable (
+            runner=invoker,
             directory='.temp',
             stdin=open (input_name, 'r') if type (problem.input) is Problem.File.Std else None,
-            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None
+            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None,
+            verbose=True
         )
         good = False
         if r.result == RunResult.RUNTIME:
             raise Error ('Runtime error (%s).' % r.comment)
-        elif r.result == RunResult.TIME_LIMIT:
+        elif r.result == RunResult.LIMIT_TIME:
             raise Error ('Time limit exceeded (%s).' % r.comment)
-        elif r.result == RunResult.MEMORY_LIMIT:
+        elif r.result == RunResult.LIMIT_MEMORY:
             raise Error ('Memory limit exceeded (%s)' % r.comment)
         elif r.result == RunResult.OK:
             good = True
