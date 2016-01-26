@@ -24,21 +24,12 @@ from tlib.common import Error, Module
 from invoker import Executable
 
 
-class Compiler (Executable):
-    def __init__ ( self, command, morph, *, name=None, t ):
-        super (Compiler, self).__init__ (command, name=name, t=t)
-        self.__morph = morph
-
-    def compile ( self, source, target ):
-        arguments = self.__morph (source, target)
-        return self (*arguments)
-
-
 class Language (Module):
     __cache = {}
 
-    def __init__ ( self, *, binary=None, compiler=None, executable=None, t ):
+    def __init__ ( self, *, name=None, binary=None, compiler=None, executable=None, t ):
         super (Language, self).__init__ (t)
+        self.__name = name
         self.__binary = binary
         self.__compiler = compiler
         self.__executable = executable
@@ -60,7 +51,8 @@ class Language (Module):
             need_recompile = False
         if need_recompile:
             self._log ('compile: %s → %s' % (source, binary))
-            if not self.__compiler.compile (source, binary):
+            compiler = Executable (self.__compiler (source, binary), name=self.__name, t=self._t)
+            if not compiler (source, binary):
                 raise Error ("comilation failed: %s" % source)
         else:
             self._log ('compile skipped: %s' % binary)

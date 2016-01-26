@@ -438,7 +438,6 @@ def compilers_configure ( configuration, t ):
     flags_cpp = ['-O2', '-Wall', '-Wextra', '-D__T_SH__', '-lm'] + os.environ['CXXFLAGS'].split()
 
     L = compilers.Language
-    C = compilers.Compiler
     E = compilers.Executable
     result = {
         'bash': L (executable=script ('bash'), t=t),
@@ -446,53 +445,36 @@ def compilers_configure ( configuration, t ):
         'python2': L (executable=script ('python2'), t=t),
         'python3': L (executable=script ('python3'), t=t),
         'c': L (
+            name='c.gcc',
             binary=binary_default,
-            compiler=C (
-                ['gcc'] + flags_c + ['-x', 'c'],
-                lambda source, target: ['-o', target, source],
-                name='c.gcc',
-                t=t
-            ),
+            compiler=lambda source, target: \
+                ['gcc'] + flags_c + ['-x', 'c'] + ['-o', target, source],
             executable=executable_default,
             t=t
         ),
         'c++': L (
+            name='c++.gcc',
             binary=binary_default,
-            compiler=C (
-                ['g++'] + flags_cpp + ['-x', 'c++'],
-                lambda source, target: ['-o', target, source],
-                name='c++.gcc',
-                t=t
-            ),
+            compiler=lambda source, target: \
+                ['g++'] + flags_cpp + ['-x', 'c++'] + ['-o', target, source],
             executable=executable_default,
             t=t
         ),
         'delphi': L (
+            name='delphi.fpc',
             binary=binary_default,
-            compiler=C (
-                [
-                    'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path,
-                    '-Fi' + include_path, '-d__T_SH__'
-                ],
-                lambda source, target: ['-o' + target, source],
-                name='delphi.fpc',
-                t=t
-            ),
-            # command=lambda source, binary: [
-            #     'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-d__T_SH__',
-            #     '-o'+binary, source
-            # ],
+            compiler=lambda source, target: [
+                'fpc', '-Mdelphi', '-O3', '-FE.', '-v0ewn', '-Sd', '-Fu' + include_path,
+                '-Fi' + include_path, '-d__T_SH__',
+                '-o' + target, source
+            ],
             executable=executable_default,
             t=t
         ),
         'java': L (
+            name='java',
             binary=lambda source: os.path.splitext (source)[0] + '.class',
-            compiler=C (
-                ['javac'],
-                lambda source, target: ['-cp', os.path.dirname (source), source],
-                name='java',
-                t=t
-            ),
+            compiler=lambda source, target: ['javac'] + ['-cp', os.path.dirname (source), source],
             executable=lambda binary: E ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
                 '-cp', os.path.dirname (binary) + java_cp_suffix,
@@ -501,13 +483,9 @@ def compilers_configure ( configuration, t ):
             t=t
         ),
         'java.checker': L (
+            name='checker.java',
             binary=lambda source: os.path.splitext(source)[0] + '.class',
-            compiler=C (
-                ['javac'],
-                lambda source, target: ['-cp', os.path.dirname (source), source],
-                name='checker.java',
-                t=t
-            ),
+            compiler=lambda source, target: ['javac'] + ['-cp', os.path.dirname (source), source],
             executable=lambda binary: E ([
                 'java', '-Xms8M', '-Xmx128M', '-Xss64M', '-ea',
                 "-cp", os.path.dirname(binary) + java_cp_suffix,
@@ -516,16 +494,13 @@ def compilers_configure ( configuration, t ):
             t=t
         ),
         'pascal': L (
+            name='pascal.fpc',
             binary=binary_default,
-            compiler=C (
-                [
-                    'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
-                    '-d__T_SH__'
-                ],
-                lambda source, target: ['-o' + target, source],
-                name='pascal.fpc',
-                t=t
-            ),
+            compiler=lambda source, target: [
+                'fpc', '-O3', '-FE.', '-v0ewn', '-Fu' + include_path, '-Fi' + include_path,
+                '-d__T_SH__',
+                '-o' + target, source
+            ],
             executable=executable_default,
             t=t
         ),
@@ -535,26 +510,10 @@ def compilers_configure ( configuration, t ):
     if configuration is None:
         return result
 
+    global suffixes
     configuration.compilers = result
+    configuration.detector = suffixes
 
-    def detector_python( source ):
-        with open (source, 'r') as f:
-            shebang = f.readline ()
-            if shebang[0:2] != '#!':
-                shebang = ''
-            if 'python3' in shebang:
-                return 'python3'
-            elif 'python2' in shebang:
-                return 'python2'
-            else:
-                # python3 is default
-                return 'python3'
-
-    configuration.detector = {
-        'c': 'c', 'c++': 'c++', 'C': 'c++', 'cxx': 'c++', 'cpp': 'c++',
-        'pas': 'pascal', 'dpr': 'delphi',
-        'java': 'java', 'pl': 'perl', 'py': detector_python, 'sh': 'bash'
-    }
     return result
 
 

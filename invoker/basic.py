@@ -62,7 +62,7 @@ class Runner (Module):
            os.dup2 (self.__stderr_fd, sys.stderr.fileno ())
            os.close (self.__stderr_fd)
 
-    def run ( self, *command, directory=None, stdin=None, stdout=None, stderr=None ):
+    def run ( self, *command, directory=None, stdin=None, stdout=None, stderr=None, verbose=False ):
         self.__stdin = stdin
         self.__stdout = stdout
         self.__stderr = stderr

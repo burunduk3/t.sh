@@ -98,7 +98,7 @@ class Runner (Module):
             except IOError:
                 pass
         time_real = time.time () - time_start
-        line = "[%.3fs, %.2fMiB]" % (time_real, mem_usage / 2**20)
+        line = "[%.3fs, %.2fMiB] " % (time_real, mem_usage / 2**20)
         if verbose:
             self._t.log (line, prefix=False, end='')
         if force_result is not None:
