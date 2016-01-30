@@ -28,6 +28,11 @@ class Error ( Exception ):
     def throw ( cls, *args ):
         raise cls (*args)
 
+    @classmethod
+    def ensure ( cls, expression, *args ):
+        if not expression:
+            raise cls (*args)
+
 
 class Module:
     def __init__ ( self, t ):

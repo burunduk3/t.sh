@@ -28,13 +28,13 @@ class Type:
         self._t = t
 
     def __str__ ( self ):
-        assert False
+        raise common.Error ()
 
     def dump ( self ):
-        assert False
+        raise common.Error ()
 
     def __eq__ ( self, x ):
-        assert False
+        raise common.Error ()
 
     @classmethod
     def dumps ( cls, value ):
@@ -48,6 +48,7 @@ class Datalog (common.Module):
     # use write=True to save data in memory, readonly=True for deny any change
     def __init__ ( self, datalog, actions={}, *, create=False, write=True, readonly=False, t ):
         super (Datalog, self).__init__ (t)
+        common.Error.ensure (write or not create, "incorrect arguments")
         self._actions = actions
         self._time = 0
         self.__readonly = readonly
@@ -59,7 +60,6 @@ class Datalog (common.Module):
                     self.__event (line.strip ())
         except FileNotFoundError as error:
             if create:
-                assert (write)
                 self._t.log.warning ("file not found: '%s', create new" % datalog)
             elif write:
                 raise Datalog.NotFound from error
@@ -69,7 +69,7 @@ class Datalog (common.Module):
             self.__datalog = None
 
     def _upgrade ( self, key, action ):
-        assert key not in self._actions
+        common.Error.ensure (key not in self._actions, "datalog keys must be unique")
         self._actions[key] = action
 
     def __precheck ( self, line ):
@@ -117,7 +117,7 @@ class Datalog (common.Module):
         for x in line:
             state = yield from state (x)
         yield from state ('\n')
-        assert state is state_default
+        common.Error.ensure (state is state_default, "parse failed")
 
 
     def __event ( self, line ):
@@ -138,12 +138,11 @@ class Datalog (common.Module):
                yield y
 
     def _commit ( self, event, *args, check=True ):
-        assert not self.__readonly
+        common.Error.ensure (not self.__readonly, "datalog commit failed: readonly")
         now = str (int (time.time ()))
         line = ' '.join (self.__logevent (now, event, *args))
-        if self.__precheck (line) is None:
-            assert not check
-            return None
+        if check:
+            common.Error.ensure (self.__precheck (line), "datalog commit failed: precheck failed")
         if self.__datalog is not None:
             print (line, file=self.__datalog)
             self.__datalog.flush ()

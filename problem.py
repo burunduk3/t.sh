@@ -35,7 +35,7 @@ class Problem (Datalog):
         for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
             if value.endswith(suffix):
                 return int (value[0:-len (suffix)]) * multiplier
-        assert False
+        raise Error ("failed to parse: '%s'" % value)
 
     @staticmethod
     def parse_file ( value, *, t ):
@@ -290,7 +290,7 @@ class Problem (Datalog):
             return self.__set_input_std ()
         if type (value) is Problem.File.Name:
             return self.__set_input_name (str (value))
-        assert False
+        raise Error ("bad input value: %s" % str (value))
     input = property (lambda self: self.__input, __set_input)
 
     def __set_output_std ( self ):
@@ -304,7 +304,7 @@ class Problem (Datalog):
             return self.__set_output_std ()
         if type (value) is Problem.File.Name:
             return self.__set_output_name (str (value))
-        assert False
+        raise Error ("bad output value: %s" % str (value))
     output = property (lambda self: self.__output, __set_output)
 
     def __set_checker ( self, value ):

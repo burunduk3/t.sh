@@ -21,7 +21,7 @@ import os
 import sys
 
 from .common import *
-from tlib.common import Module
+from tlib.common import Error, Module
 
 class Runner (Module):
     def __init__ ( self, *, limit_time=None, limit_idle=None, limit_memory=None, t ):
@@ -67,7 +67,7 @@ class Runner (Module):
         self.__stdout = stdout
         self.__stderr = stderr
         for x in command:
-            assert ' ' not in x
+            Error.ensure (' ' not in x, "basic invoker doesn't support space in arguments")
         self.__directory = directory
         with self:
             r = os.system (' '.join (command))

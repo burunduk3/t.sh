@@ -102,7 +102,7 @@ def build_problem ( problem ):
         log.warning('No solution defined for problem %s.' % problem.name)
     problem.cleanup ()
     generator = problem.generator
-    assert generator is not None
+    Error.ensure (generator is not None, "[problem %s]: no generator" % problem.name)
     result = generator.run ()
     if not result:
         raise Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
@@ -153,7 +153,7 @@ class Test:
         } [self.__type] ()
 
     def __create_generate ( self ):
-        assert self.__type is Test.GENERATOR
+        Error.ensure (self.__type is Test.GENERATOR)
         path = '.temp/00' if self.__path is None else self.__path
         result = self.__generator.run (stdout=open(path, 'w'))
         # TODO: validate test
@@ -322,28 +322,32 @@ def wolf_export( problem, configuration, global_config ):
         data = f.read()
         checker = base64.b64encode(data).decode('ascii')
     wolf = WolfConnection()
-    assert wolf.query({'action': 'ping'}) is True
+    r = wolf.query({'action': 'ping'})
+    Error.ensure (r is True)
     log_write = lambda text: log (text, prefix=False, end='')
     log_write('send packets:')
     problem_id = wolf.query(
         {'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']}
     )
-    assert isinstance(problem_id, int)
+    Error.ensure (isinstance(problem_id, int))
     log_write('.')
-    assert wolf.query({
+    r = wolf.query({
         'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'],
         'output': configuration['output-file']
     })
+    Error.ensure (r)
     log_write('.')
-    assert wolf.query({
+    r = wolf.query({
         'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'],
         'memory': configuration['memory-limit']
     })
+    error.ensure (r)
     log_write('.')
-    assert wolf.query({
+    r = wolf.query({
         'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name,
         'compiler': compiler, 'source': checker
     })
+    Error.ensure (r)
     log_write('.')
     for test in tests:
         with open(test, 'rb') as f:
@@ -352,9 +356,10 @@ def wolf_export( problem, configuration, global_config ):
         with open(test + '.a', 'rb') as f:
             data = f.read()
             answer = base64.b64encode(data).decode('ascii')
-        assert wolf.query(
+        r = wolf.query(
             {'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer}
         )
+        Error.ensure (r)
         log_write('.')
     log('', prefix='')
     log.info('uploaded, problem id: %d' % problem_id)

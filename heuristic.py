@@ -181,7 +181,7 @@ def problem_force_properties ( path, *, t ):
             except KeyError:
                 t.log.warning ('[%s]: ignored option: %s' % (path, name))
                 continue
-            assert key not in result
+            Error.ensure (key not in result, "properties must not duplicate")
             result[key] = morph (value)
     except FileNotFoundError:
         return None  # no file, no problems

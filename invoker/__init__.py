@@ -22,7 +22,7 @@ import itertools
 import os
 import sys
 
-from tlib.common import Module
+from tlib.common import Error, Module
 from .common import *
 
 Runner = None
@@ -41,8 +41,7 @@ if Runner is None:
         print ('basic runner failed:', e, file=sys.stderr)
         pass
 
-if Runner is None:
-    assert Runner is not None
+Error.ensure (Runner is not None, "failed to choose runner")
 
 
 class Executable (Module):

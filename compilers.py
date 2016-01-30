@@ -45,7 +45,7 @@ class Language (Module):
         binary = self.__binary (source)
         need_recompile = True
         if self.__compiler is None:
-            assert binary == source
+            Error.ensure (binary == source, "cannot make binary without compiler")
             need_recompile = False
         if os.path.isfile (binary) and os.stat (binary).st_mtime >= os.stat (source).st_mtime:
             need_recompile = False
