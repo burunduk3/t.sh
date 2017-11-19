@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -17,48 +17,53 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import os
-import itertools
-
-from tlib.common import Error, Module
-from invoker import Executable
+from tlib import Color, Error, Log, Module
 
 
-class Language (Module):
-    __cache = {}
+class CompilationError (Error):
+    def __init__ ( self, source, *args, **kwargs ):
+        super (CompilationError, self).__init__ (*args, **kwargs)
+        self.__source = source
 
-    def __init__ ( self, *, name=None, binary=None, compiler=None, executable=None, t ):
-        super (Language, self).__init__ (t)
+    def __str__ ( self ):
+        return "compilation failed: %s" % self.__source
+
+
+class Compiler (Module):
+    def __init__ (
+        self, name, *args,
+        binary=lambda source: source.path, compile=None, executable, suffixes=[], **kwargs
+    ):
+        """
+            binary: Source -> binary name
+            compile: Source, binary name -> RunResult for compilation
+            executable: binary name, Source -> Executable
+        """
+        super (Compiler, self).__init__ (*args, **kwargs)
         self.__name = name
+        self.__suffixes = suffixes
         self.__binary = binary
-        self.__compiler = compiler
+        self.__compile = compile
         self.__executable = executable
-        if binary is None:
-            self.__binary = lambda source: source
 
-    def __call__ ( self, source ):
-        key = source
-        if not key.startswith ('/'):
-            key = os.path.join (os.getcwd (), key)
-        if key in Language.__cache:
-            return Language.__cache[key]
+    name = property (lambda self: self.__name)
+    suffixes = property (lambda self: self.__suffixes)
+    binary = property (lambda self: self.__binary)
+    executable = property (lambda self: self.__executable)
+
+    def __call__ ( self, source, directory=None ):
         binary = self.__binary (source)
-        need_recompile = True
-        if self.__compiler is None:
-            Error.ensure (binary == source, "cannot make binary without compiler")
-            need_recompile = False
-        if os.path.isfile (binary) and os.stat (binary).st_mtime >= os.stat (source).st_mtime:
-            need_recompile = False
-        if need_recompile:
-            self._log ('compile: %s → %s' % (source, binary))
-            compiler = Executable (self.__compiler (source, binary), name=self.__name, t=self._t)
-            if not compiler (source, binary):
-                raise Error ("comilation failed: %s" % source)
+        if self.__compile is not None:
+            compile, args = self.__compile (source, binary)
+            if self._log.policy is not Log.BRIEF:
+                self._log (
+                    '[compile %s]' % source, Color.DEFAULT, ' $ ' + str (compile) + ' '.join (args)
+                )
+            result = compile.run (args, directory=directory)
+            if not result:
+                raise self._error (source, cls=CompilationError)
         else:
-            self._log ('compile skipped: %s' % binary)
-        if not binary.startswith ('/'):
-            binary = os.path.join (os.getcwd (), binary)
-        Language.__cache[key] = self.__executable (binary)
-        return Language.__cache[key]
+            assert binary == source.path
+        return self.__executable (binary, source)
 
 

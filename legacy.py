@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by

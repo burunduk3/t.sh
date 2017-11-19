@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -19,627 +19,213 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import os
-import re
-import shutil
 import sys
-import json
-import base64
-import socket
 import argparse
 
-from tlib.common import Error, Log
-from problem import Problem
+from tlib import Color, Error, Log
+
 import heuristic
 import help
-import legacy
-from invoker import Runner, RunResult
-
-# === CHANGE LOG ===
-#  2010-11-17 [burunduk3] work started
-
-
-
-def testset_answers ( problem, *, tests=None, force=False, quiet=False ):
-    global log
-    if problem.solution is None:
-        raise Error ('[problem %s]: solution not found' % problem.name)
-    problem.solution.compile ()
-    if not quiet:
-        log ('generate answers', end='')
-    input_name, output_name = '.temp/input', '.temp/output'
-    if type (problem.input) is Problem.File.Name:
-        input_name = os.path.join ('.temp', str (problem.input))
-    if type (problem.output) is Problem.File.Name:
-        output_name = os.path.join ('.temp', str (problem.output))
-    if tests is None:
-        tests = problem.tests
-    for test in tests:
-        if os.path.isfile (test + '.a') and not force:
-            if not quiet:
-                log ('+', prefix=False, end='')
-            continue
-        if not quiet:
-            log ('.', prefix=False, end='')
-        shutil.copy (test, input_name)
-        r = problem.solution.run (
-            directory='.temp',
-            stdin=open (input_name, 'r') if type (problem.input) is Problem.File.Std else None,
-            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None
-        )
-        if not r:
-            raise Error ('[problem %s]: solution failed on test %s.' % (problem.name, test))
-        shutil.copy (output_name, test + '.a')
-    if not quiet:
-        log ('done', prefix=False)
-
-
-def build_problem ( problem ):
-    global log
-    path = problem.path
-    log ('== building problem “%s” ==' % problem.name)
-    config_names = [
-        ('path', problem.path),
-        ('time limit', problem.limit_time),
-        ('memory limit', problem.limit_memory),
-        ('checker', problem.checker),
-        ('solution', problem.solution),
-        ('generator', problem.generator),
-        ('validator', problem.validator),
-        ('input', problem.input),
-        ('output', problem.output),
-        # ('default solution', ...),
-        # ('source directory', ...)
-    ]
-    for name, value in config_names:
-        if value is None:
-            continue
-        log ('  * %s: %s' % (name, value))
-    os.chdir (path)
-    if not os.path.isdir ('.temp'):
-        os.mkdir ('.temp')
-    if problem.solution is None:
-        log.warning('No solution defined for problem %s.' % problem.name)
-    problem.cleanup ()
-    generator = problem.generator
-    Error.ensure (generator is not None, "[problem %s]: no generator" % problem.name)
-    result = generator.run ()
-    if not result:
-        raise Error ('[problem %s]: generator failed: %s' % (problem.name, generator))
-    problem.research_tests ()
-    if not problem.tests:
-        raise Error ('[problem %s]: no tests found' % problem.name)
-    log('tests (total: %d): [%s]' % (len (problem.tests), ' '.join (problem.tests)))
-    # TODO: convert_tests(tests), move to generation, for copy
-    validator = problem.validator
-    if validator is not None:
-        validator.compile ()
-        log('validate tests', end='')
-        for test in problem.tests:
-            log ('.', prefix=False, end='')
-            if validator.run (test, stdin=open(test, 'r')):
-                continue
-            raise Error('[problem %s]: validation failed: %s' % (problem.name, test))
-        log ('done', prefix=False)
-    testset_answers (problem)
-
-
-class Test:
-    FILE, GENERATOR = range (2)
-
-    def __init__ ( self, problem=None, path=None, generator=None, name=None ):
-        self.__problem = problem
-        self.__path = path
-        self.__name = name
-        if self.__name is None:
-            self.__name = self.__path
-        if self.__name is None:
-            self.__name = '<unknown>'
-        if generator is not None:
-            self.__type = Test.GENERATOR
-            self.__generator = generator
-        elif path is not None:
-            self.__type = Test.FILE
-        else:
-            raise Exception ("failed to create test: unknown type")
-
-    def __str__ ( self ):
-        return self.__name
-
-    def create ( self ):
-        return {
-            Test.FILE: lambda: self.__path,
-            Test.GENERATOR: lambda: self.__create_generate ()
-        } [self.__type] ()
-
-    def __create_generate ( self ):
-        Error.ensure (self.__type is Test.GENERATOR)
-        path = '.temp/00' if self.__path is None else self.__path
-        result = self.__generator.run (stdout=open(path, 'w'))
-        # TODO: validate test
-        testset_answers (self.__problem, tests=[path], force=True, quiet=True)
-        if not result:
-            raise Error ('generator (%s) failed' % self.__generator)
-            return None
-        return path
-
-    @classmethod
-    def file ( self, path, problem=None, name=None ):
-        return Test (problem, path=path, name=name)
-
-    @classmethod
-    def generate ( self, generator, problem=None, name=None ):
-        return Test (problem, generator=generator, name=name)
-
-
-def tests_export ( problem ):
-    os.chdir (problem.path)
-    if not problem.tests:
-        problem.research_tests ()
-    tests = [Test.file (x) for x in problem.tests]
-    if not tests:
-        raise Error ('[problem %s]: no tests found' % problem.name)
-    if not os.path.isdir ('tests'):
-        os.mkdir ('tests')
-    pattern = '%02d'
-    if len (tests) >= 100:
-        pattern = '%03d'
-    if len (tests) >= 1000:
-        raise Error ("[problem %s]: too many tests (%d)" % (problem.name, len (tests)))
-    n = 0
-    for i, x in enumerate (tests):
-        test = x.create ()
-        name = pattern % (i + 1)
-        shutil.copy (test, os.path.join ('tests', name))
-        shutil.copy (test + '.a', os.path.join ('tests', name) + '.a')
-        n += 1
-    log ('pattern: %s, tests copied: %d' % (pattern, n))
-
-
-def check_problem ( problem, *, solution=None, tests=None, quiet=False, t ):
-    global log
-    os.chdir (problem.path)
-    if tests is None:
-        if not problem.tests:
-            problem.research_tests ()
-        tests = [Test.file (x) for x in problem.tests]
-    if not tests:
-        raise Error ('[problem %s]: no tests found' % problem.name)
-    checker = problem.checker
-    if checker is None:
-        raise Error ('[problem %s]: no checker found' % problem.name)
-    checker.compile ()
-    if solution is None:
-        solution = problem.solution
-    if solution is None:
-        raise Error ('[problem %s]: no solution found' % problem.name)
-    solution.compile ()
-    if not quiet:
-        log.info('checking solution: %s' % solution)
-    input_name, output_name = '.temp/input', '.temp/output'
-    if type (problem.input) is Problem.File.Name:
-        input_name = os.path.join ('.temp', str (problem.input))
-    if type (problem.output) is Problem.File.Name:
-        output_name = os.path.join ('.temp', str (problem.output))
-    invoker = Runner (
-        limit_time=problem.limit_time, limit_idle=problem.limit_idle,
-        limit_memory=problem.limit_memory, t=t
-    )
-    for i, x in enumerate (tests):
-        test = x.create ()
-        test_name = '#%02d' % (i + 1)
-        log ('test %s [%s] ' % (test_name, x), end='')
-        shutil.copy (test, input_name)
-        r = solution.executable (
-            runner=invoker,
-            directory='.temp',
-            stdin=open (input_name, 'r') if type (problem.input) is Problem.File.Std else None,
-            stdout=open (output_name, 'w') if type (problem.output) is Problem.File.Std else None,
-            verbose=True
-        )
-        good = False
-        if r.result == RunResult.RUNTIME:
-            raise Error ('Runtime error (%s).' % r.comment)
-        elif r.result == RunResult.LIMIT_TIME:
-            raise Error ('Time limit exceeded (%s).' % r.comment)
-        elif r.result == RunResult.LIMIT_MEMORY:
-            raise Error ('Memory limit exceeded (%s)' % r.comment)
-        elif r.result == RunResult.OK:
-            good = True
-        else:
-            raise Error ('Invokation failed (%s).' % r.comment)
-        if not good:
-            return False
-        log ('* ', prefix=False, end='')
-        result = checker.run (input_name, output_name, test + '.a')
-        if not result:
-            log.error ('Wrong answer on test %s.' % test_name)
-            return False
-    return True
-
-
-def find_source( path ):
-    # used in Wolf
-    return heuristic.source_find (path)
-
-
-class WolfConnection:
-    def __init__( self ):
-        self.__socket = socket.socket()
-        self.__socket.connect(('127.0.0.1', 1917))
-        self.__tail = b''
-        self.__queue = iter([])
-
-    def query( self, j ):
-        self.__socket.send((json.dumps(j) + '\n').encode('utf-8'))
-        while True:
-            r = next(self.__queue, None)
-            if r is not None:
-                return r
-            data = self.__socket.recv(4096).split(b'\n')
-            self.__tail += data[0]
-            queue = []
-            for x in data[1:]:
-                queue.append(json.loads(self.__tail.decode('utf-8')))
-                self.__tail = x
-            self.__queue = iter(queue)
-
-
-def wolf_export( problem, configuration, global_config ):
-    log.info("== upload problem %s" % configuration['id'])
-    os.chdir(configuration['tests-directory'])
-    if 'full' not in configuration:
-        raise Error ("cannot full name for problem %s" % configuration['id'])
-    checker = None
-    for checker_name in [
-        'check', 'checker', 'check_' + configuration['id'], 'checker_' + configuration['id']
-    ]:
-        checker = find_source(os.path.join('..', checker_name))
-        if checker is not None:
-            break
-    if checker is None:
-        raise Error ('cannot find checker')
-    wolf_compilers = {
-        'delphi': 'win32.checker.delphi.ifmo',
-        # 'delphi': 'win32.checker.delphi.kitten',
-        'c++': 'win32.checker.c++',
-        'perl': 'win32.perl'  # nothing special
-    }
-    checker_name = os.path.basename(checker)
-    compiler = wolf_compilers[global_config.detect_language(checker).name]
-    tests = [Test.file (x) for x in problem.tests]
-    if not tests:
-        raise T.Error('problem %s: no tests found' % problem)
-    log('  name: %s' % configuration['id'])
-    log('  full name: %s' % configuration['full'])
-    log('  input file: %s' % configuration['input-file'])
-    log('  output file: %s' % configuration['output-file'])
-    log('  time limit: %s' % configuration['time-limit'])
-    log('  memory limit: %s' % configuration['memory-limit'])
-    log('  checker: %s (compiled with %s)' % (checker_name, compiler))
-    log('tests (total: %d): %s' % (len(tests), ','.join(tests)))
-    with open(checker, 'rb') as f:
-        data = f.read()
-        checker = base64.b64encode(data).decode('ascii')
-    wolf = WolfConnection()
-    r = wolf.query({'action': 'ping'})
-    Error.ensure (r is True)
-    log_write = lambda text: log (text, prefix=False, end='')
-    log_write('send packets:')
-    problem_id = wolf.query(
-        {'action': 'problem.create', 'name': configuration['id'], 'full': configuration['full']}
-    )
-    Error.ensure (isinstance(problem_id, int))
-    log_write('.')
-    r = wolf.query({
-        'action': 'problem.files.set', 'id': problem_id, 'input': configuration['input-file'],
-        'output': configuration['output-file']
-    })
-    Error.ensure (r)
-    log_write('.')
-    r = wolf.query({
-        'action': 'problem.limits.set', 'id': problem_id, 'time': configuration['time-limit'],
-        'memory': configuration['memory-limit']
-    })
-    error.ensure (r)
-    log_write('.')
-    r = wolf.query({
-        'action': 'problem.checker.set', 'id': problem_id, 'name': checker_name,
-        'compiler': compiler, 'source': checker
-    })
-    Error.ensure (r)
-    log_write('.')
-    for test in tests:
-        with open(test, 'rb') as f:
-            data = f.read()
-            input = base64.b64encode(data).decode('ascii')
-        with open(test + '.a', 'rb') as f:
-            data = f.read()
-            answer = base64.b64encode(data).decode('ascii')
-        r = wolf.query(
-            {'action': 'problem.test.add', 'id': problem_id, 'test': input, 'answer': answer}
-        )
-        Error.ensure (r)
-        log_write('.')
-    log('', prefix='')
-    log.info('uploaded, problem id: %d' % problem_id)
-
-
-def clean_problem ( problem ):
-    global log, options
-    os.chdir (problem.path)
-    remove_tests = 'no-remove-tests' not in options or not options['no-remove-tests']
-    if remove_tests and os.path.isdir ('.tests'):
-        for filename in os.listdir ('.tests'):
-            ok = (filename in ("tests.description", "tests.gen"))
-            ok = ok or re.match('^\d+(.a)?$', filename)
-            if not ok:
-                continue
-            os.remove (os.path.join ('.tests', filename))
-    for directory in ['.', '.tests', '.temp', 'tests', 'src', 'source', 'solutions']:
-        if not os.path.isdir (directory):
-            continue
-        for filename in os.listdir (directory):
-            if os.path.isdir (filename):
-                continue
-            ok = re.match (
-                '^.*\.(in|out|log|exe|dcu|ppu|o|obj|class|hi|manifest|pyc|pyo)$', filename
-            )
-            ok = ok or re.match('^\d+(.a)?$', filename)
-            ok = ok or filename in ("input", "output")
-            if ok:
-                os.remove (os.path.join (directory, filename))
-                continue
-            for suffix in heuristic.suffixes_all ():
-                if not os.path.isfile (os.path.join (directory, filename + '.' + suffix)):
-                    continue
-                os.remove(os.path.join(directory, filename))
-                break
-        if remove_tests:
-            cleaner = heuristic.source_find (os.path.join (directory, 'wipe'))
-            if cleaner is None:
-                continue
-            if not cleaner.run ():
-                log.warning ('%s returned non-zero' % cleaner)
-    if (remove_tests and
-        (os.path.isdir ('source') or os.path.isdir ('src')) and
-        os.path.isdir ('tests')
-    ):
-        os.rmdir ('tests')
-    for directory in ['.temp', '.tests']:
-        if os.path.isdir (directory):
-            os.rmdir (directory)
-
-
-def prepare():
-    import resource as r
-    import signal as s
-    global resource, signal
-    resource, signal = r, s
-    resource.setrlimit(resource.RLIMIT_STACK, (-1, -1))
-
-
-# TODO: move into separate file
-def prepare_windows():
-    # Это выглядит как мерзкий, грязный хак, каковым является вообще любая работа с windows.
-    import ctypes
-
-    STD_INPUT_HANDLE = -10
-    STD_OUTPUT_HANDLE = -11
-    STD_ERROR_HANDLE = -12
-
-    FOREGROUND_BLUE = 0x01
-    FOREGROUND_GREEN = 0x02
-    FOREGROUND_RED = 0x04
-    FOREGROUND_INTENSITY = 0x08
-    BACKGROUND_BLUE = 0x10
-    BACKGROUND_GREEN = 0x20
-    BACKGROUND_RED = 0x40
-    BACKGROUND_INTENSITY = 0x80
-    windows_colors = [
-        0,  # black
-        FOREGROUND_RED,  # red
-        FOREGROUND_GREEN,  # green
-        FOREGROUND_GREEN | FOREGROUND_RED,  # brown
-        FOREGROUND_BLUE,  # blue
-        FOREGROUND_BLUE | FOREGROUND_RED,  # magenta
-        FOREGROUND_BLUE | FOREGROUND_GREEN,  # skyblue
-        FOREGROUND_BLUE | FOREGROUND_GREEN | FOREGROUND_RED,  # gray
-        0, 0, 0
-    ]
-
-    def windows_write( text, end='' ):
-        text += end
-        handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
-        pieces = text.split('\x1b[')
-        sys.stdout.write(pieces[0])
-        sys.stdout.flush()
-        for str in pieces[1:]:
-            color, line = str.split('m', 1)
-            numbers = [int(x) for x in color.split(';')]
-            mask = 0
-            for x in numbers:
-                if x == 0:
-                    mask |= windows_colors[7]
-                if x == 1:
-                    mask |= FOREGROUND_INTENSITY
-                if 30 <= x <= 39:
-                    mask |= windows_colors[x - 30]
-            ctypes.windll.kernel32.SetConsoleTextAttribute(handle, mask)
-            sys.stdout.write(line.encode('utf8').decode('ibm866'))
-            sys.stdout.flush()
-
-    def windows_convert_tests( tests ):
-        pass
-
-    log.write = windows_write
-    convert_tests = windows_convert_tests
+from wolf import wolf_export
+from invoker import runner_choose
+from settings import Settings
 
 
 class T:
-    def __init__ ( self, log, configuration, legacy ):
-        self.__log = log
-        self.__configuration = configuration
-        self.__problems = None
-        self.__legacy = legacy
-        self.__languages = {}
-        self.__upgrades_problem = []
+    def __init__ ( self, *, log_policy ):
+        self.__log = Log (policy=log_policy)
+        self.__configuration = heuristic.Configuration (
+            testlib_checker_path = lambda checker: "/home/burunduk3/source/testlib/checkers/%s.cpp" % checker,
+        t=self)
+        self.__runner = None
+        self.__defaults = Settings (
+            limit_time = 5.0,
+            limit_idle = 10.0,
+            limit_memory = 1024 << 20,
+            filename_input = Settings.STDIN,
+            filename_output = Settings.STDOUT,
+        )
 
+    defaults = property (lambda self: self.__defaults)
     log = property (lambda self: self.__log)
-    languages = property (lambda self: self.__languages)
+    configuration = property (lambda self: self.__configuration)
+    compilers = property (lambda self: self.__configuration.compilers)
 
-    problem_upgrades = property (lambda self: self.__upgrades_problem)
+    def error ( self, message, *, cls=Error ):
+        return cls (message, t=self)
 
-    def set_languages ( self, languages ):
-        self.__languages = languages
+    def ensure ( self, expression, message ):
+        if not expression:
+            raise Error (message, t=self)
 
-    def register_problem_upgrade ( self, type, key, action ):
-        self.__upgrades_problem.append ((type, key, action))
+    def run_prepare ( self ):
+        if self.__runner is None:
+            self.__runner =  runner_choose (t=self) (t=self)
 
-    def __foreach ( self, action, *extra ):
-        self.__log.debug ("T::__foreach (extra = [%s])" % ', '.join ([str (x) for x in extra]))
-        if self.__problems is None:
-            self.__explore (*extra)
-        for problem in self.__problems:
-            action (problem)
+    def run ( self, *args, **kwargs ):
+        self.run_prepare ()
+        return self.__runner.run (*args, **kwargs)
 
-    def __build ( self, problem, arguments ):
-        build_problem (problem)
-        if not check_problem (problem, t=self):
-            raise Error ("problem check failed")
 
-    def __check ( self, problem, arguments ):
-        solution = None
-        if len(arguments) >= 1:
-            solution = heuristic.source_find (arguments[0], prefix=problem.name_short)
-            if solution is None:
-                raise Error ("solution not found: '%s'" % arguments[0])
-        check_problem (problem, solution=solution, t=self)
 
-    def __clean ( self, problem, arguments ):
-        clean_problem (problem)
 
-    def __stress ( self, problem, arguments ):
-        try:
-            generator, solution = arguments[:2]
-        except ValueError as error:
-            raise Error ("usage: t.py stress <generator> <solution>") from error
-        generator, solution = [heuristic.source_find (x) for x in (generator, solution)]
-        r = True
-        while r:
-            r = check_problem (problem, solution=solution, tests=[
-                Test.generate (generator, problem=problem, name='<stress>')
-            ], quiet=True, t=self )
+class API:
+    def __init__ ( self, *, arguments ):
+        self.__arguments = arguments
+        self.__t = T (log_policy=arguments.log_policy)
+        self.__heuristics = heuristic.Heuristics (arguments=self.__arguments, t=self.__t)
 
-    def __tests ( self, problem, *arguments ):
-        tests_export (problem)
+        self.problem_build = (self.__target_problem, None, self.__problem_build)
+        self.problem_clean = (self.__target_problem, None, self.__problem_clean)
+        self.solution_check = (self.__target_problem, self.__option_solution, self.__solution_check)
 
-    def __wolf_export ( self, problem, *arguments ):
-        problem_configuration = self.__legacy.read_configuration (problem)
-        wolf_export (problem, problem_configuration, self.__legacy)
+    error = property (lambda self: self.__t.error)
 
-    def __problem_create ( self, uuid=None ):
-        problem = Problem.new ()
-        uuid = problem.create (uuid)
-        self.__problems = [problem]
-        self.__log ('create problem #%s' % uuid)
-
-    def __problem_reset ( self, problem, arguments ):
-        problem.reset ()
-
-    def __problem_rescan ( self, problem, arguments ):
-        heuristic.problem_rescan (problem, t=self)
-
-    def __problem_set ( self, problem, arguments ):
-        raise Error ("TODO")
-
-    def __help ( self, par='disclaimer' ):
-        sys.stdout.write ({
-            'disclaimer': help.disclaimer,
-            'gpl:c': help.license,
-            'gpl:w': help.warranty,
-        }[par])
-
-    def __call__ ( self, arguments ):
-        command = arguments[0]
-        actions = {
-            x: (
-                lambda command, args, y=y, extra=extra:
-                self.__foreach (lambda problem: y (problem, args), *extra)
-            ) for x, y, *extra in [
-                ('build', self.__build),
-                ('check', self.__check),
-                ('clean', self.__clean, None, False),
-                ('stress', self.__stress),
-                ('tests', self.__tests),
-                ('problem:reset', self.__problem_reset),
-                ('problem:rescan', self.__problem_rescan),
-                ('problem:set', self.__problem_set),
-                ('wolf:export', self.__wolf_export)
-            ]
-        }
-        actions.update ({
-            'problem:create': lambda command, args: self.__problem_create (*args),
-            'help': lambda command, args: self.__help (*args)
-        })
-        try:
-            action = actions[command]
-        except KeyError as error:
-            raise Error ("unknown command: '%s'" % command) from error
-        action (command, arguments[1:])
-
-    def __explore ( self, recursive=None, datalog_write=True ):
-        if recursive is None:
-            recursive = self.__configuration['recursive']
-        self.__log.debug ("T::__explore (datalog_write=%s)" % str (datalog_write))
-        if recursive:
-            self.__problems = list (heuristic.find_problems (datalog_write=datalog_write, t=self))
+    def __target_problem ( self ):
+        if self.__arguments.recursive:
+            yield from self.__heuristics.problem_search ()
         else:
-            self.__problems = [heuristic.problem_open (datalog_write=datalog_write, t=self)]
-        for problem in self.__problems:
-            if problem.uuid is None:
-                problem.create ()
+            yield self.__heuristics.problem_open ()
+
+    def __problem_build ( self, problem ):
+        problem.build ()
+        if problem.solution_model is None:
+            self.__t.log.warning ('no model solution')
+        elif not self.__solution_check (problem, problem.solution_model):
+            raise self.__t.error ("build failed: model solution doesn't work")
+
+    def __problem_clean ( self, problem ):
+        problem.clean (remove_tests=not self.__arguments.keep_tests)
+
+    def __solution_check ( self, problem, solution ):
+        verdict = problem.solution_check (solution, self.__arguments.keep_going)
+        if self.__t.log.policy is Log.BRIEF:
+            self.__t.log (solution, ': ', Color.GREEN if verdict else Color.RED, verdict, Color.DEFAULT, " [%.2fs, %.2fMiB] " % (verdict.peak_time, verdict.peak_memory / 2**20), verdict.comment)
+        return verdict
+
+    def __option_solution ( self, options, *, target ):
+        while len (options):
+            option = options.pop ()
+            yield self.__heuristics.solution_open (option, problem=target, defaults=self.__heuristics.defaults (target.defaults))
 
 
-def arguments_parse():
-    parser = argparse.ArgumentParser (description='t.py: programming contest problem helper')
-    parser.add_argument (
-        '--no-remove-tests', '-t', dest='remove_tests', action='store_false', default=True
-    )
+    # def __stress ( self, problem, arguments ):
+    #     try:
+    #         generator, solution = arguments[:2]
+    #     except ValueError as error:
+    #         raise Error ("usage: t.py stress <generator> <solution>") from error
+    #     generator, solution = [heuristic.source_find (x) for x in (generator, solution)]
+    #     r = True
+    #     while r:
+    #         r = check_problem (problem, solution=solution, tests=[
+    #             Test.generate (generator, problem=problem, name='<stress>')
+    #         ], quiet=True, t=self )
+
+    # def __tests ( self, problem, *arguments ):
+    #     tests_export (problem)
+
+    # def __wolf_export ( self, problem, *arguments ):
+    #     problem_configuration = self.__legacy.read_configuration (problem)
+    #     wolf_export (problem, problem_configuration, self.__legacy)
+
+    # def __problem_create ( self, uuid=None ):
+    #     problem = Problem.new ()
+    #     uuid = problem.create (uuid)
+    #     self.__problems = [problem]
+    #     self.__log ('create problem #%s' % uuid)
+
+    # def __problem_reset ( self, problem, arguments ):
+    #     problem.reset ()
+
+    # def __problem_rescan ( self, problem, arguments ):
+    #     heuristic.problem_rescan (problem, t=self)
+
+    # def __problem_set ( self, problem, arguments ):
+    #     raise Error ("TODO")
+
+    # def __help ( self, par='disclaimer' ):
+    #     sys.stdout.write ({
+    #         'disclaimer': help.disclaimer,
+    #         'gpl:c': help.license,
+    #         'gpl:w': help.warranty,
+    #     }[par])
+
+
+def main ():
+    parser = argparse.ArgumentParser (description='t.py: programming contest problem utility')
     parser.add_argument ('--recursive', '-r', dest='recursive', action='store_true', default=False)
-    parser.add_argument ('--verbose', '-v', dest='verbose', action='store_true', default=False)
-    parser.add_argument ('command', nargs='+')
-    args = parser.parse_args ()
-    options = {
-        'no-remove-tests': not args.remove_tests,
-        'recursive': args.recursive,
-        'verbose': args.verbose
-    }
-    return options, args.command
+    parser.add_argument ('--brief', '-b', dest='log_policy', action='store_const', const=Log.BRIEF, default=Log.DEFAULT)
+    parser.add_argument ('--verbose', '-v', dest='log_policy', action='store_const', const=Log.VERBOSE, default=Log.DEFAULT)
+    parser.add_argument ('--keep-going', '-k', dest='keep_going', action='store_true', default=False) # check on all tests
+    parser.add_argument ('--keep-tests', '-t', dest='keep_tests', action='store_true', default=False) # remove tests on clean
+    parser.add_argument ('--checker', dest='checker', default=None)
+    parser.add_argument ('--limit-time', dest='limit_time', default=None)
+    parser.add_argument ('--limit-idle', dest='limit_idle', default=None)
+    parser.add_argument ('--limit-memory', dest='limit_memory', default=None)
+    parser.add_argument ('--filename-input', dest='filename_input', default=None)
+    parser.add_argument ('--filename-output', dest='filename_output', default=None)
+    parser.add_argument (dest='commands', nargs='+')
+    arguments = parser.parse_args ()
 
+    # platform.prepare ()
+    # heuristic.AutoGenerator.register (t=tpy)
+    # languages = heuristic.compilers_configure ( configuration, tpy )
+    # tpy.set_languages (languages)
+    api = API (arguments=arguments)
 
-if sys.platform == 'win32':  # if os is outdated
-    prepare = prepare_windows
+    commands = arguments.commands
+    while len (commands):
+        command = commands.pop (0)
+        # aliases
+        command = {
+            'build': 'problem:build',
+            'clean': 'problem:clean',
+            'check': 'solution:check',
+            # 'tests': '???',
+        }.get (command, command)
+        
+        try:
+            targets, options, action = {
+                'problem:build': api.problem_build,
+                'problem:clean': api.problem_clean,
+                'solution:check': api.solution_check,
+            }[command]
+        except KeyError:
+            raise api.error ("unknown command: '%s'" % command) from None
+        try:
+            for target in targets ():
+                target.info ()
+                if options is None:
+                    action (target)
+                else:
+                    for option in options (commands, target=target):
+                        action (target, option)
+        except NotImplementedError as error:
+            raise api.error ("not implemented: " + str (error)) from None
 
-options, arguments = arguments_parse()
+        # actions = {
+        #         ('check', self.__check),
+        #         ('clean', self.__clean, None, False),
+        #         ('stress', self.__stress),
+        #         ('tests', self.__tests),
+        #         # ('problem:reset', self.__problem_reset),
+        #         # ('problem:rescan', self.__problem_rescan),
+        #         # ('problem:set', self.__problem_set),
+        #         ('wolf:export', self.__wolf_export)
+        #     ]
+        # }
+        # actions.update ({
+        #     'problem:create': lambda command, args: self.__problem_create (*args),
+        #     'help': lambda command, args: self.__help (*args)
+        # })
 
-log = Log()
-prepare()
-
-configuration = legacy.Configuration()
-tpy = T (log, options, configuration)
-heuristic.AutoGenerator.register (t=tpy)
-languages = heuristic.compilers_configure ( configuration, tpy )
-tpy.set_languages (languages)
 
 try:
-    if options['verbose']:
-        log.verbose ()
-    tpy (arguments)
+    main ()
 except Error as e:
-    log.error (e)
+    e.log ()
     sys.exit (1)
 except KeyboardInterrupt:
-    log.info ("^C")
+    print ("^C")
     sys.exit (2)
 

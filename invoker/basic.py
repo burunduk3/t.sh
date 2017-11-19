@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@ import os
 import sys
 
 from .common import *
-from tlib.common import Error, Module
+from tlib import Module
 
 class Runner (Module):
     def __init__ ( self, *, limit_time=None, limit_idle=None, limit_memory=None, t ):
@@ -67,7 +67,7 @@ class Runner (Module):
         self.__stdout = stdout
         self.__stderr = stderr
         for x in command:
-            Error.ensure (' ' not in x, "basic invoker doesn't support space in arguments")
+            self._ensure (' ' not in x, "basic invoker doesn't support space in arguments")
         self.__directory = directory
         with self:
             r = os.system (' '.join (command))

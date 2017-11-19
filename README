@@ -1,9 +1,9 @@
 OVERVIEW
 
-t.py is a tool for making acm-style competitions.
+t.py is a tool for problems (tasks) from icpc-style competitions.
 
-Historically it is clone of t.cmd used in IFMO, written by burunduk3 in 2009 as t.sh (yes, that was
-a bash script), then rewritten in python3.
+Historically it is clone of t.cmd used in IFMO (now ITMO University), written by @burunduk3
+in 2009 as t.sh (yes, that was a bash script), then rewritten in python3.
 
 It works with problems: generates tests and make simple checking
 It is under development now (and forever), so use it on you own risk.
@@ -24,6 +24,9 @@ in git repository.
 
 FEEDBACK
 
-If you have any questions, comments or improvement ideas, write to
- burunduk3@gmail.com (Oleg Davydov)
+If you have any questions, comments or improvement ideas, write to burunduk3 (Oleg Davydov)
+ @burunduk3
+ https://t.me/burunduk3
+ burunduk3@gmail.com
+ https://vk.com/burunduk3
 

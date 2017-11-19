@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #
 #    t.py: utility for contest problem development
 #    Copyright (C) 2009-2017 Oleg Davydov
@@ -17,22 +19,11 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+from source import Source
 
-from .common import *
 
-def runner_choose ( t ):
-    try:
-        from .advanced import Runner
-        return Runner
-    except ImportError as e:
-        t.log.warning ('advanced runner failed:', e)
-
-    try:
-        from .basic import Runner
-        return Runner
-    except ImportError as e:
-        t.log.warning ('basic runner failed:', e)
-
-    raise t.error ("failed to choose runner")
+class Checker (Source):
+    def __init__ ( self, *args, **kwargs ):
+        super (Checker, self).__init__ (*args, **kwargs)
 
 

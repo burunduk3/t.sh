@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
+
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -17,355 +19,361 @@
 #    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-import itertools
 import os
 import os.path
-import random
-import re
 import shutil
+import subprocess
 
-from tlib.common import Error
-from tlib.datalog import Datalog, Type
-from tlib import types
+from tlib import Module, Log
+from compilers import CompilationError
+from settings import Settings
+from test import Answer
+from verdict import Verdict
 
-
-class Problem (Datalog):
-    @staticmethod
-    def parse_memory ( value, *, t ):
-        for suffix, multiplier in [('K', 2**10), ('M', 2**20), ('G', 2**30), ('T', 2**40), ('', 1)]:
-            if value.endswith(suffix):
-                return int (value[0:-len (suffix)]) * multiplier
-        raise Error ("failed to parse: '%s'" % value)
-
-    @staticmethod
-    def parse_file ( value, *, t ):
-        if value in ('<std>', '<stdin>', '<stdout>'):
-            return Problem.File.std (t=t)
-        return Problem.File.name (value, t=t)
-
-    TYPE_GENERATOR = range (1)
-
-    LEV_CREATE = 'problem.create'
-    LEV_RESET = 'problem.reset'
-    LEV_NAME_SHORT = 'problem.name_short'
-    LEV_LIMIT_TIME = 'problem.limit_time'
-    LEV_LIMIT_IDLE = 'problem.limit_idle'
-    LEV_LIMIT_MEMORY = 'problem.limit_memory'
-    LEV_INPUT = 'problem.input'
-    LEV_INPUT_STD = 'problem.input.std'
-    LEV_OUTPUT = 'problem.output'
-    LEV_OUTPUT_STD = 'problem.output.std'
-    LEV_CHECKER = 'problem.checker'
-    LEV_SOLUTION = 'problem.solution'
-    LEV_GENERATOR_EXT = 'problem.generator.external'
-    LEV_VALIDATOR = 'problem.validator'
-
-    class File (Type):
-        class Std (Type):
-            def __init__ ( self, *, t ):
-                super (Problem.File.Std, self).__init__ (t=t)
-
-            def __str__ ( self ):
-                return '<std>'
-
-            def __eq__ ( self, x ):
-                return type (self) is type (x)
-
-        class Name (Type):
-            def __init__ ( self, name, *, t ):
-                super (Problem.File.Name, self).__init__ (t=t)
-                self.__name = name
-
-            def __str__ ( self ):
-                return self.__name
-
-            def __eq__ ( self, x ):
-                if type (self) is not type (x):
-                    return False
-                return self.__name == x.__name
-
-        @classmethod
-        def std ( cls, t ):
-            return Problem.File.Std (t=t)
-
-        @classmethod
-        def name ( cls, name, t ):
-            return Problem.File.Name (name, t=t)
-
-
-    class Generator (Type):
-        def __init__ ( self, problem, source, directory, *, t ):
-            super (Problem.Generator, self).__init__ (t=t)
-            self.__problem = problem
-            self.__source = source
-            self.__directory = directory
-
-        def commit ( self ):
-            return (Problem.LEV_GENERATOR_EXT, self.__source, types.String (self.__directory))
-
-        def __str__ ( self ):
-            return str (self.__source)
-
-        def __eq__ ( self, x ):
-            if type (self) is not type (x):
-                return False
-            return self.__source == x.__source
-
-        def run ( self ):
-            r = self.__source.run (directory=self.__directory)
-            if not r:
-                raise Error ('generator failed: %s' % self)
-            return self.__problem.autofind_tests ('tests')
-
-    def __init__ ( self, datalog, **kwargs ):
-        self.__path = os.path.dirname (os.path.abspath (datalog))
-        self.__uuid = None
-        self.__name_short = None
-        self.__limit_time = None
-        self.__limit_idle = None
-        self.__limit_memory = None
-        self.__input = None
-        self.__output = None
-        self.__solution = None
-        self.__generator = None
-        self.__validator = None
-        self.__checker = None
-        super (Problem, self).__init__ (datalog, actions={
-            Problem.LEV_CREATE: self.__lev_create
-        }, **kwargs)
+class Problem (Module):
+    def __init__ (
+        self, path, *args, id,
+        generator=None,
+        validator=None,
+        interactor=None,
+        checker=None,
+        cleaner=None,
+        solution_model=None,
+        directory_source=None,
+        directory_temp=None,
+        directory_tests=None,
+        defaults,
+        sources=[],
+        garbage=[],
+        **kwargs
+    ):
+        super (Problem, self).__init__ (*args, **kwargs)
+        self.__path = path
+        self.__path_canonical = os.path.abspath (path)
+        self.__id = id
+        self.__generator = generator
+        self.__validator = validator
+        self.__interactor = interactor
+        self.__checker = checker
+        self.__cleaner = cleaner
+        self.__solution_model = solution_model
+        self.__directory_source = directory_source
+        self.__directory_temp = directory_temp
+        self.__directory_tests = directory_tests
+        self.__defaults = defaults
+        self.__sources = sources
+        self.__garbage = garbage
         self.__tests = None
 
-    # handle logevents
+    generator = property (lambda self: self.__generator)
+    @generator.setter
+    def generator ( self, value ):
+        self.__generator = value
 
-    def __lev_create ( self, data ):
-        self.__uuid = next (data)
-        self._actions = {
-            Problem.LEV_RESET: self.__lev_reset,
-            Problem.LEV_NAME_SHORT: self.__lev_name_short,
-            Problem.LEV_LIMIT_TIME: self.__lev_limit_time,
-            Problem.LEV_LIMIT_IDLE: self.__lev_limit_idle,
-            Problem.LEV_LIMIT_MEMORY: self.__lev_limit_memory,
-            Problem.LEV_INPUT: self.__lev_input_name,
-            Problem.LEV_INPUT_STD: self.__lev_input_std,
-            Problem.LEV_OUTPUT: self.__lev_output_name,
-            Problem.LEV_OUTPUT_STD: self.__lev_output_std,
-            Problem.LEV_CHECKER: self.__lev_checker,
-            Problem.LEV_SOLUTION: self.__lev_solution,
-            # Problem.LEV_GENERATOR_AUTO: self.__lev_generator_auto,
-            Problem.LEV_GENERATOR_EXT: self.__lev_generator_external,
-            Problem.LEV_VALIDATOR: self.__lev_validator
-        }
-        for type, key, action in self._t.problem_upgrades:
-            def assign_generator ( value ):
-                nonlocal self
-                self.__generator = value
+    validator = property ()
+    @validator.setter
+    def validator ( self, value ):
+        self.__validator = value
 
-            self._upgrade (key, lambda data, self=self: {
-                Problem.TYPE_GENERATOR: assign_generator
-            } [type] (action (self, data)))
-        return self.__uuid
+    interactor = property ()
+    @interactor.setter
+    def interactor ( self, value ):
+        self.__interactor = value
 
-    def __lev_reset ( self, data ):
-        self.__name_short = None
-        self.__limit_time = None
-        self.__limit_idle = None
-        self.__limit_memory = None
-        self.__input = None
-        self.__output = None
-        self.__solution = None
-        self.__generator = None
-        self.__validator = None
-        self.__checker = None
+    checker = property ()
+    @checker.setter
+    def checker ( self, value ):
+        self.__checker = value
 
-    def __lev_name_short ( self, data ):
-        self.__name_short = types.String.parse (data)
-        return True
+    cleaner = property ()
+    @cleaner.setter
+    def cleaner ( self, value ):
+        self.__cleaner = value
 
-    def __lev_limit_time ( self, data ):
-        self.__limit_time = types.Float.parse (data)
-        return True
+    solution_model = property (lambda self: self.__solution_model)
+    @solution_model.setter
+    def solution_model ( self, value ):
+        self.__solution_model = value
 
-    def __lev_limit_idle ( self, data ):
-        self.__limit_idle = types.Float.parse (data)
-        return True
-
-    def __lev_limit_memory ( self, data ):
-        self.__limit_memory = types.Integer.parse (data)
-        return True
-
-    def __lev_input_std ( self, data ):
-        self.__input = Problem.File.std (t=self._t)
-        return True
-
-    def __lev_input_name ( self, data ):
-        self.__input = Problem.File.name (next (data), t=self._t)
-        return True
-
-    def __lev_output_std ( self, data ):
-        self.__output = Problem.File.std (t=self._t)
-        return True
-
-    def __lev_output_name ( self, data ):
-        self.__output = Problem.File.name (next (data), t=self._t)
-        return True
-
-    def __lev_checker ( self, data ):
-        self.__checker = types.Source.parse (data, self._languages)
-        return True
-
-    def __lev_solution ( self, data ):
-        self.__solution = types.Source.parse (data, self._languages)
-        return True
-
-    def __lev_generator_external ( self, data ):
-        generator = types.Source.parse (data, self._languages)
-        directory = next (data)
-        self.__generator = Problem.Generator (self, generator, directory, t=self._t)
-        return True
-
-    def __lev_validator ( self, data ):
-        self.__validator = types.Source.parse (data, self._languages)
-        return True
-
-    def canonical ( self, routine ):
-        fields = [
-            ('name', lambda: self.name_short, self.__set_name_short, None),
-            ('input', lambda: self.input, self.__set_input, lambda: self.__set_input_std ()),
-            ('output', lambda: self.output, self.__set_output, lambda: self.__set_output_std ()),
-            ('time limit', lambda: self.limit_time, self.__set_limit_time, None),
-            ('idle limit', lambda: self.limit_idle, self.__set_limit_idle, None),
-            ('memory limit', lambda: self.limit_memory, self.__set_limit_memory, None),
-            ('solution', lambda: self.solution, self.__set_solution, None),
-        ]
-        for args in fields:
-            routine (*args)
-
-    def create ( self, uuid=None ):
-        if uuid is None:
-            uuid = ''.join (['%x' % random.randint (0, 15) for x in range (32)])
-        return self._commit (Problem.LEV_CREATE, types.String (uuid))
-
-    def reset ( self ):
-        return self._commit (Problem.LEV_RESET)
-
-    path = property (lambda self: self.__path)
-    uuid = property (lambda self: self.__uuid)
-
-    def __set_name_short ( self, value ):
-        return self._commit (Problem.LEV_NAME_SHORT, types.String (value))
-    name_short = property (
-        lambda self: self.__name_short.value if self.__name_short is not None else None,
-        __set_name_short
-    )
-
-    def __set_limit_time ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_TIME, types.Float (value))
-    limit_time = property (
-        lambda self: self.__limit_time.value if self.__limit_time is not None else None,
-        __set_limit_time
-    )
-
-    def __set_limit_idle ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_IDLE, types.Float (value))
-    limit_idle = property (
-        lambda self: self.__limit_idle.value if self.__limit_idle is not None else None,
-        __set_limit_idle
-    )
-
-    def __set_limit_memory ( self, value ):
-        return self._commit (Problem.LEV_LIMIT_MEMORY, types.Integer (value))
-    limit_memory = property (
-        lambda self: self.__limit_memory.value if self.__limit_memory is not None else None,
-        __set_limit_memory
-    )
-
-    def __set_input_std ( self ):
-        return self._commit (Problem.LEV_INPUT_STD)
-
-    def __set_input_name ( self, value ):
-        return self._commit (Problem.LEV_INPUT, types.String (value))
-
-    def __set_input ( self, value ):
-        if type (value) is Problem.File.Std:
-            return self.__set_input_std ()
-        if type (value) is Problem.File.Name:
-            return self.__set_input_name (str (value))
-        raise Error ("bad input value: %s" % str (value))
-    input = property (lambda self: self.__input, __set_input)
-
-    def __set_output_std ( self ):
-        return self._commit (Problem.LEV_OUTPUT_STD)
-
-    def __set_output_name ( self, value ):
-        return self._commit (Problem.LEV_OUTPUT, types.String (value))
-
-    def __set_output ( self, value ):
-        if type (value) is Problem.File.Std:
-            return self.__set_output_std ()
-        if type (value) is Problem.File.Name:
-            return self.__set_output_name (str (value))
-        raise Error ("bad output value: %s" % str (value))
-    output = property (lambda self: self.__output, __set_output)
-
-    def __set_checker ( self, value ):
-        return self._commit (Problem.LEV_CHECKER, value)
-    checker = property (lambda self: self.__checker, __set_checker)
-
-    def __set_solution ( self, value ):
-        return self._commit (Problem.LEV_SOLUTION, value)
-    solution = property (lambda self: self.__solution, __set_solution)
-
-    def __set_generator ( self, value ):
-        lev, *args = value.commit ()
-        return self._commit (lev, *args)
-    generator = property (lambda self: self.__generator, __set_generator)
-
-    def __set_validator ( self, value ):
-        return self._commit (Problem.LEV_VALIDATOR, value)
-    validator = property (lambda self: self.__validator, __set_validator)
-
-    name = property (
-        lambda self: self.__name_short if self.__name_short is not None else self.__uuid
-    )
+    defaults = property (lambda self: self.__defaults)
     tests = property (lambda self: self.__tests)
+    @tests.setter
+    def tests ( self, value ):
+        self.__tests = value
 
-    def cleanup ( self ):
-        if not os.path.isdir ('.tests'):
-            os.mkdir ('.tests')
-        for filename in os.listdir ('.tests'):
-            if not re.match('^\d+(\.a)?$', filename):
+    def __str__ ( self ):
+        return self.__id
+
+    def info ( self ):
+        if self._log.policy is Log.BRIEF:
+            self._log ("problem: %s" % self.__id)
+            return
+        self._log ('== problem “%s” ==' % self.__id)
+        nop = lambda x: x
+        def humansize ( x ):
+            k = 1
+            for suffix in ['', 'KiB', 'MiB', 'GiB', 'TiB']:
+                if x < k * 1000 or suffix == 'TiB':
+                    if suffix == '':
+                        return "%d" % x
+                    else:
+                        return "%.2f %s" % (x / k, suffix)
+                k *= 1024
+        for name, value, filt in [
+            ('path', self.__path_canonical, nop),
+            ('time limit', self.__defaults.limit_time, nop),
+            ('memory limit', self.__defaults.limit_memory, humansize),
+            ('generator', self.__generator, nop),
+            ('validator', self.__validator, nop),
+            ('checker', self.__checker, nop),
+            ('solution', self.__solution_model, nop),
+            ('input', self.__defaults.filename_input, nop),
+            ('output', self.__defaults.filename_output, nop),
+        ]:
+            if value is None:
                 continue
-            os.remove (os.path.join ('.tests', filename))
+            self._log ('  * %s: %s' % (name, filt (value)))
 
-    def autofind_tests ( self, directory ):
-        count = 0
-        for filename in sorted (os.listdir (directory)):
-            if not re.match ('^\d{2,3}$', filename):
+    def build ( self ):
+        self._t.run_prepare ()
+        dir_old = os.getcwd ()
+        os.chdir (self.__path_canonical)
+        try:
+            if self._log.policy is not Log.BRIEF:
+                self._log ('== build “%s” ==' % self.__id)
+            if self.__solution_model is None:
+                self._log.warning ('model solution not set')
+            self._t.ensure (self.__generator is not None, "[problem %s]: no generator" % self.__id)
+            self.__tests = self.__generator.run ()
+            if self._log.policy is not Log.BRIEF:
+                self._log ("total tests: %d" % len (self.__tests))
+            self.testset_validate ()
+            self.testset_answers ()
+            if self._log.policy is Log.BRIEF:
+                self._log ("build finished, total tests: %d" % len (self.__tests))
+        finally:
+            os.chdir (dir_old)
+
+    def clean ( self, remove_tests=True ):
+        self._t.run_prepare ()
+        dir_old = os.getcwd ()
+        os.chdir (self.__path_canonical)
+        try:
+            if self._log.policy is not Log.BRIEF:
+                self._log ('== clean “%s” ==' % self.__id)
+            try:
+                for filename in os.listdir (self.__directory_temp):
+                    os.remove (os.path.join (self.__directory_temp, filename))
+                os.rmdir (self.__directory_temp)
+            except FileNotFoundError:
+                pass
+            if self.__cleaner is not None:
+                result = self.__cleaner.run ()
+                if not result:
+                    self._log.error ('cleaner failed: ', result)
+                return
+            if remove_tests:
+                if self.__tests is not None:
+                    for test in self.__tests:
+                        os.remove (test.path)
+                        os.remove (test.answer.path)
+                if self.__directory_tests is not None and self.__directory_tests != self.__directory_source:
+                    try:
+                        os.rmdir (self.__directory_tests)
+                    except FileNotFoundError:
+                        pass
+            for source in self.__sources:
+                if source is None:
+                    continue
+                if source.executable is None:
+                    continue
+                if source.path == source.executable.path:
+                    continue
+                os.remove (source.executable.path)
+            for filename in self.__garbage:
+                try:
+                    os.remove (filename)
+                except FileNotFoundError:
+                    pass
+        finally:
+            os.chdir (dir_old)
+
+    def testset_validate ( self ):
+        self._t.run_prepare ()
+        if self.__validator is None:
+            return self._log.warning ("validator not set")
+        self.__validator.compile ()
+        if self._log.policy is not Log.BRIEF:
+            self._log ('validate tests', end='')
+        for test in self.__tests:
+            if self._log.policy is not Log.BRIEF:
+                self._log ('.', prefix=False, end='')
+            result = self.__validator.run ([test.path], stdin=test.path)
+            if not result:
+                raise self._error ('validation failed: %s' % (test))
+        if self._log.policy is not Log.BRIEF:
+            self._log ('done', prefix=False)
+
+    def testset_answers ( self ):
+        """ generate answers using model solution """
+        self._t.run_prepare ()
+        solution = self.__solution_model
+        if solution is not None:
+            solution.compile ()
+            if self.__interactor is not None:
+                self.__interactor.compile ()
+            input_name = os.path.join (self.__directory_temp, solution.filename_input if type (solution.filename_input) is str else 'input')
+            output_name = os.path.join (self.__directory_temp, solution.filename_output if type (solution.filename_output) is str else 'output')
+
+        try:
+            os.mkdir (self.__directory_temp)
+        except FileExistsError:
+            pass
+
+        if self._log.policy is not Log.BRIEF:
+            self._log ('generate answers', end='')
+        for test in self.__tests:
+            if test.answer is not None:
+                if self._log.policy is not Log.BRIEF:
+                    self._log ('+', prefix=False, end='')
                 continue
-            if not os.path.isfile (os.path.join (directory, filename)):
-                continue
-            target = os.path.join ('.tests', '%d' % count)
-            shutil.move (os.path.join (directory, filename), target)
-            count += 1
-        return True
+            if self._log.policy is not Log.BRIEF:
+                self._log ('.', prefix=False, end='')
+            if solution is None:
+                raise self._error ('no solution')
+            shutil.copy (test.path, input_name)
+            result_interactor = True
+            if self.__interactor is not None:
+                pipe_sr, pipe_iw = os.pipe ()
+                pipe_ir, pipe_sw = os.pipe ()
+                interactor = self.__interactor.run (
+                    [os.path.basename (input_name), os.path.basename (output_name)],
+                    wait=False,
+                    directory=self.__directory_temp,
+                    stdin=pipe_ir, stdout=pipe_iw
+                )
+                (result_interactor, result) = solution.run (
+                    directory=self.__directory_temp,
+                    interactor=interactor,
+                    stdin=pipe_sr, stdout=pipe_sw
+                )
+            else:
+                result = solution.run (
+                    directory=self.__directory_temp,
+                    stdin=None if type (solution.filename_input) is str else input_name,
+                    stdout=None if type (solution.filename_output) is str else output_name,
+                )
+            if not result_interactor or not result:
+                raise self._error ("solution failed [test: %s]: %s" % (test, result))
+            shutil.copy (output_name, test.path + '.a')
+            test.answer = Answer (test.path + '.a', test)
+        if self._log.policy is not Log.BRIEF:
+            self._log ('done', prefix=False)
 
-    def research_tests ( self ):
-        self.__tests = []
-        for x in map (lambda i: os.path.join ('.tests', '%d' % i), itertools.count ()):
-            if not os.path.isfile (x):
-                break
-            self.__tests.append (x)
+    def solution_check ( self, solution, keep_going=False ):
+        assert solution is not None
+        self._t.run_prepare ()
+        dir_old = os.getcwd ()
+        os.chdir (self.__path_canonical)
+        try:
+            if self._log.policy is not Log.BRIEF:
+                self._log ('== check “%s” solution: %s ==' % (self.__id, solution))
+            if self.__tests is None:
+                raise self._error ("no tests")
+            if self.__checker is None:
+                raise self._error ("no checker")
+            self.__checker.compile ()
+            try:
+                solution.compile ()
+            except CompilationError as error:
+                if self._log.policy is Log.BRIEF:
+                    return Verdict.ce ()
+                raise error from error
+            if self.__interactor is not None:
+                self.__interactor.compile ()
 
-        # if 'source-directory' not in configuration:
-        #    for directory in ['source', 'src', 'tests']:
-        #      if os.path.isdir(os.path.join(path, directory)):
-        #        configuration.update({'source-directory': os.path.join(path, directory)})
-        #        break
-        # if 'tests-directory' not in configuration:
-        #    configuration.update({'tests-directory': os.path.join(path, 'tests')})
-        # return configuration
+            try:
+                os.mkdir (self.__directory_temp)
+            except FileExistsError:
+                pass
 
-    @classmethod
-    def new ( self, datalog='.datalog', *, t ):
-        return Problem (datalog, create=True, t=t)
+            input_name = os.path.join (self.__directory_temp, solution.filename_input if type (solution.filename_input) is str else 'input')
+            output_name = os.path.join (self.__directory_temp, solution.filename_output if type (solution.filename_output) is str else 'output')
+
+            verdict = None
+            peak_time = None
+            peak_memory = None
+            for i, test in enumerate (self.__tests):
+                shutil.copy (test.path, input_name)
+                if self._log.policy is not Log.BRIEF:
+                    self._log ('test #%d [%s] ' % (i, test.path), end='')
+                result_interactor = True
+                # self._log.debug ('run with interactor: ', self.__interactor)
+                if self.__interactor is not None:
+                    pipe_sr, pipe_iw = os.pipe ()
+                    pipe_ir, pipe_sw = os.pipe ()
+                    interactor = self.__interactor.run (
+                        [os.path.basename (input_name), os.path.basename (output_name)],
+                        wait=False,
+                        directory=self.__directory_temp,
+                        stdin=pipe_ir, stdout=pipe_iw
+                    )
+                    (result_interactor, result) = solution.run (
+                        directory=self.__directory_temp,
+                        interactor=interactor,
+                        stdin=pipe_sr, stdout=pipe_sw,
+                        verbose=self._log.policy is not Log.BRIEF,
+                        limit_time=solution.limit_time,
+                        limit_idle=solution.limit_idle,
+                        limit_memory=solution.limit_memory
+                    )
+                else:
+                    result = solution.run (
+                        directory=self.__directory_temp,
+                        stdin=None if type (solution.filename_input) is str else input_name,
+                        stdout=None if type (solution.filename_output) is str else output_name,
+                        verbose=self._log.policy is not Log.BRIEF,
+                        limit_time=solution.limit_time,
+                        limit_idle=solution.limit_idle,
+                        limit_memory=solution.limit_memory
+                    )
+                if peak_time is None or (result.time, i) > peak_time:
+                    peak_time = (result.time, i)
+                if peak_memory is None or (result.memory, i) > peak_memory:
+                    peak_memory = (result.memory, i)
+                if self._log.policy is not Log.BRIEF:
+                    self._log ('* ', prefix=False, end='')
+                if not result_interactor:
+                    if self._log.policy is not Log.BRIEF:
+                        self._log.error ("rejected by interactor: %s" % result_interactor)
+                    if verdict is None:
+                        verdict = Verdict.fail_solution (i + 1, result, peak_time=peak_time[0], peak_memory=peak_memory[0])
+                    if not keep_going:
+                        return verdict
+                    continue
+                if not result:
+                    if self._log.policy is not Log.BRIEF:
+                        self._log.error ('rejected: %s' % result)
+                    if verdict is None:
+                        verdict = Verdict.fail_solution (i + 1, result, peak_time=peak_time[0], peak_memory=peak_memory[0])
+                    if not keep_going:
+                        return verdict
+                    continue
+                result = self.__checker.run ([input_name, output_name, test.answer.path], stderr=subprocess.PIPE)
+                if self._log.policy is not Log.BRIEF:
+                    self._log (result.stderr.strip (), prefix=False)
+                if not result:
+                    if self._log.policy is not Log.BRIEF:
+                        self._log.error ('rejected by checker: %s' % result)
+                    if verdict is None:
+                        verdict = Verdict.fail_checker (i + 1, result, result.stderr.strip (), peak_time=peak_time[0], peak_memory=peak_memory[0])
+                    if not keep_going:
+                        return verdict
+                    continue
+            if verdict is None:
+                verdict = Verdict.ok (peak_time=peak_time[0], peak_memory=peak_memory[0])
+            return verdict
+        finally:
+            os.chdir (dir_old)
+
 

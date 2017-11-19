@@ -1,6 +1,6 @@
 #
 #    t.py: utility for contest problem development
-#    Copyright (C) 2009-2016 Oleg Davydov
+#    Copyright (C) 2009-2017 Oleg Davydov
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -18,94 +18,167 @@
 #
 
 import os
-import signal
 import time
-import threading
+import resource
 import subprocess
 
-from tlib.common import Module
+from tlib import Log, Module
 from .common import *
 
 
-class Runner (Module):
-    def __init__ ( self, *, limit_time=None, limit_idle=None, limit_memory=None, t ):
-        super (Runner, self).__init__ (t=t)
+class Process:
+    class CONTINUE:
+        pass
+
+    def __init__ ( self,
+        command, *,
+        directory=None,
+        stdin=None, stdout=None, stderr=None,
+        limit_time=None, limit_idle=None, limit_memory=None
+    ):
+        self.__start = time.time ()
+        if type (stdin) is str:
+            stdin = open (stdin, "rb")
+        if type (stdout) is str:
+            stdout = open (stdout, "wb")
+        if type (stderr) is str:
+            stderr = open (stderr, "wb")
+        self.__popen = subprocess.Popen (
+            command, cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
+        )
+        self.__pid = self.__popen.pid
         self.__limit_time = limit_time
         self.__limit_idle = limit_idle
         self.__limit_memory = limit_memory
-        self.__process = None
-        self.__condition = None
-        if self.__limit_idle is not None:
-            self._log.warning ("advanced runner doesn\'t support idleness timelimit")
+        self.__usage_time = 0.0
+        self.__usage_idle = 0.0
+        self.__usage_memory = 0
+        self.__peak_memory = 0
+
+    usage_time = property (lambda self: self.__usage_time)
+    usage_memory = property (lambda self: self.__usage_memory)
+    peak_memory = property (lambda self: self.__peak_memory)
+
+    def peaks ( self ):
+        return {
+            'peak_time': self.__usage_time,
+            'peak_memory': self.__peak_memory
+        }
+
+    def check ( self ):
+        code = self.__popen.returncode
+        if code is not None:
+            return code
+        try:  # так может случиться, что процесс завершится в самый интересный момент
+            with open("/proc/%d/stat" % self.__pid, 'r') as f:
+                stats = f.readline ().split ()
+            with open("/proc/%d/statm" % self.__pid, 'r') as f:
+                stats_m = f.readline ().split ()
+
+            self.__usage_time = (int (stats[13]) + int (stats[14])) / \
+                os.sysconf (os.sysconf_names['SC_CLK_TCK'])
+            self.__usage_idle = time.time () - self.__start
+            self.__usage_memory = int (stats_m[0]) * 1024
+            self.__peak_memory = max (self.__peak_memory, self.__usage_memory)
+
+            if self.__limit_time is not None and self.__usage_time > self.__limit_time:
+                return RunResult.limitTime ('cpu usage: %.2f' % self.__usage_time, **self.peaks ())
+                self.__popen.kill ()
+            if self.__limit_idle is not None and self.__usage_idle > self.__limit_idle:
+                return RunResult.limitIdle ('time usage: %.2f' % self.__usage_idle, **self.peaks ())
+                self.__popen.kill ()
+            if self.__limit_memory is not None and self.__usage_memory > self.__limit_memory:
+                return RunResult.limitMemory ('memory usage: %d' % self.__usage_memory, **self.peaks ())
+                self.__popen.kill ()
+
+            return Process.CONTINUE
+        except IOError:
+            return None
+
+    def kill ( self ):
+        return self.__popen.kill ()
+
+    def communicate ( self, *args, **kwargs ):
+        return self.__popen.communicate (*args, **kwargs)
+
+
+class Runner (Module):
+    def __init__ ( self, *, t ):
+        super (Runner, self).__init__ (t=t)
+        resource.setrlimit (resource.RLIMIT_STACK, (-1, -1))  # set unlimited stack size
         self._log.warning ("advanced runner doesn\'t support security limitations")
 
-    def __waiter ( self ):
-        self.__process.communicate ()
-        self.__condition.acquire ()
-        self.__condition.notify ()
-        self.__condition.release ()
-
-    def run ( self, *command, directory=None, stdin=None, stdout=None, stderr=None, verbose=False ):
-        # TODO: twice upgrade invokation, use limit_idle
-        # limit resources of current process: bad idea
-        # resource.setrlimit(resource.RLIMIT_CPU, ((int)(self.limit_time + 2), -1))
-        # resource.setrlimit(resource.RLIMIT_DATA, (self.limit_memory, -1))
-        # useless case without rlimits
-        # if code == -signal.SIGXCPU:
-        #     return RunResult (RunResult.TIME_LIMIT, code, 'signal SIGXCPU received')
-        time_start = time.time ()
-        self.__process = subprocess.Popen (
-            command, cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr
-        )
-        pid = self.__process.pid
-        self.__condition = threading.Condition ()
-        thread = threading.Thread (target=self.__waiter)
-        # wait, what?
-        thread.start ()
-        force_result = None
-        mem_usage = 0
-        while True:
-            self.__condition.acquire()
-            self.__condition.wait(0.01)
-            self.__condition.release()
-            if self.__process.returncode is not None:
-                break
-            try:  # так может случиться, что процесс завершится в самый интересный момент
-                with open("/proc/%d/stat" % pid, 'r') as f:
-                    stats = f.readline ().split ()
-                with open("/proc/%d/statm" % pid, 'r') as f:
-                    stats_m = f.readline ().split ()
-
-                time_cpu = (int (stats[13]) + int (stats[14])) / \
-                    os.sysconf (os.sysconf_names['SC_CLK_TCK'])
-                time_real = time.time () - time_start
-                mem_usage = int (stats_m[0]) * 1024
-
-                line = "%.3fs, %.2fMiB" % (time_real, mem_usage / 2**20)
-                line = line + '\b' * len (line)
+    def run (self,
+        command, *,
+        interactor=None,
+        wait=True,
+        verbose=False,
+        stdin=None, stdout=None, stderr=None,
+        **kwargs
+    ):
+        if stdin is None:
+            stdin = subprocess.DEVNULL
+        if stdout is None and self._log.policy is Log.BRIEF:
+            stdout = subprocess.DEVNULL
+        if stderr is None and self._log.policy is Log.BRIEF:
+            stderr = subprocess.DEVNULL
+        process = Process (command, stdin=stdin, stdout=stdout, stderr=stderr, **kwargs)
+        if not wait:
+            return process
+        outputs = None
+        try:
+            time_cpu = 0.0
+            while True:
+                result_process = process.check ()
+                if result_process is None:
+                    continue
+                if isinstance (result_process, (RunResult, int)):
+                    break
+                if interactor is not None:
+                    result_interactor = interactor.check ()
+                    if result_interactor is None:
+                        continue
+                    # self._log.debug ("interactor result: ", result_interactor)
+                    if isinstance (result_interactor, (RunResult, int)):
+                        process.kill ()
                 if verbose:
+                    line = "%.3fs, %.2fMiB" % (process.usage_time, process.usage_memory / 2**20)
+                    line = line + '\b' * len (line)
                     self._t.log (line, prefix=False, end='')
-
-                if self.__limit_time is not None and time_cpu > self.__limit_time:
-                    force_result = RunResult.limitTime ('cpu usage: %.2f' % time_cpu)
-                    self.__process.kill ()
-                if self.__limit_idle is not None and time_real > self.__limit_idle:
-                    force_result = RunResult.limitIdle ('time usage: %.2f' % time_real)
-                    self.__process.kill ()
-                if self.__limit_memory is not None and mem_usage > self.__limit_memory:
-                    force_result = RunResult.limitMemory ('memory usage: %d' % mem_usage)
-                    self.__process.kill ()
-            except IOError:
-                pass
-        time_real = time.time () - time_start
-        line = "[%.3fs, %.2fMiB] " % (time_real, mem_usage / 2**20)
+                try:
+                    outputs = process.communicate (timeout=0.01)
+                except subprocess.TimeoutExpired:
+                    pass
+                if interactor is not None:
+                    try:
+                        # self._log.debug ("interactor.communicate")
+                        interactor.communicate (timeout=0)
+                    except subprocess.TimeoutExpired:
+                        pass
+            if interactor is not None:
+                interactor.communicate ()
+                result_interactor = interactor.check ()
+        finally:
+            if interactor is not None:
+                interactor.kill ()
+            process.kill ()
+        
+        if outputs is None:
+            outputs = process.communicate ()
+        if isinstance (result_process, int) and result_process:
+            result_process = RunResult.runtime (result_process, 'exit code: %d' % result_process, outputs=outputs, **process.peaks ())
+        if isinstance (result_process, int) and result_process == 0:
+            result_process = RunResult.ok (outputs=outputs, **process.peaks ())
         if verbose:
+            line = "[%.3fs, %.2fMiB] " % (process.usage_time, process.peak_memory / 2**20)
             self._t.log (line, prefix=False, end='')
-        if force_result is not None:
-            return force_result
-        code = self.__process.returncode
-        if code != 0:
-            return RunResult.runtime (code, 'runtime error %d' % code)
-        else:
-            return RunResult.ok ()
+        assert type (result_process) is RunResult
+        if interactor is not None:
+            if isinstance (result_interactor, int) and result_interactor:
+                result_interactor = RunResult.runtime (result_interactor, 'exit code: %d' % result_interactor, **interactor.peaks ())
+            if isinstance (result_interactor, int) and result_interactor == 0:
+                result_interactor = RunResult.ok (**interactor.peaks ())
+            assert type (result_interactor) is RunResult
+            return (result_interactor, result_process)
+        return result_process
 
